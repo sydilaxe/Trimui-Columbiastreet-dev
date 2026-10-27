@@ -1,23 +1,31 @@
 #!/bin/sh
-# Columbia Street launcher for OnionOS. Mirrors Onion's own GMU launcher: take
-# the audio device from audioserver and use Onion's MI_AO/MI_GFX-backed SDL 1.2.
+# Columbia Street launcher for TrimUI OS (TrimUI Brick, Brick Hammer and Brick Pro).
+# All four cores stay online, at full speed, while it plays.
 cd "$(dirname "$0")"
 
-echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-[ -f /mnt/SDCARD/.tmp_update/script/stop_audioserver.sh ] && . /mnt/SDCARD/.tmp_update/script/stop_audioserver.sh
+CPU=/sys/devices/system/cpu
+gov_was=$(cat $CPU/cpu0/cpufreq/scaling_governor 2>/dev/null)
+for c in 0 1 2 3; do
+    [ -f $CPU/cpu$c/online ] && echo 1 > $CPU/cpu$c/online 2>/dev/null
+done
+echo performance > $CPU/cpu0/cpufreq/scaling_governor 2>/dev/null
 
-touch /tmp/stay_awake
-unset LD_PRELOAD
-export LD_LIBRARY_PATH="/mnt/SDCARD/.tmp_update/lib/parasyte:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/usr/trimui/lib:/usr/lib:$LD_LIBRARY_PATH"
 
-# Optional settings, before ./columbia (for example CS_BUFFER=2048 ./columbia):
-#   CS_BUFFER=2048  bigger audio buffers if you hear crackle (1024 by default)
-#   CS_RATE=44100   a lower sample rate: a little less work
-#   CS_UPDATE=0     don't check GitHub for a new version
+# Optional settings, before ./columbia (for example CS_BUFFER=1024 ./columbia):
+#   CS_BUFFER=1024     bigger audio buffers if you hear crackle (512 by default)
+#   CS_RATE=44100      a lower sample rate: a little less work
+#   CS_UPDATE=0        don't check GitHub for a new version
+#   CS_AUDIO=internal  always the speaker and headphones (default: a USB audio device when one is plugged in)
+#   CS_AUDIO=<name>    the output device whose name contains <name> (see log.txt)
+#   CS_MIDI=0          no USB MIDI
+#   CS_MIDI_CLOCK=0    send no MIDI clock;  CS_MIDI_FOLLOW=0  ignore MIDI clock coming in
+#   CS_ROTATE=180      turn the picture, for a firmware whose screen is turned
+#   CS_JOYMAP=A=1,B=0  another firmware's button numbers
 # exit status 75: the app has just updated itself, so start the new version
 while :; do
     ./columbia > log.txt 2>&1
     [ $? -eq 75 ] || break
 done
 
-rm -f /tmp/stay_awake
+[ -n "$gov_was" ] && echo "$gov_was" > $CPU/cpu0/cpufreq/scaling_governor 2>/dev/null

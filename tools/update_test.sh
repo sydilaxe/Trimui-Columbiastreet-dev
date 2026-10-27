@@ -10,11 +10,11 @@ set -eu
 T=build/update-test
 PORT=${PORT:-8767}
 rm -rf $T
-mkdir -p $T/rel/App/ColumbiaStreet/breaks/CHOP $T/bad $T/app/breaks
+mkdir -p $T/rel/Apps/ColumbiaStreet/breaks/CHOP $T/bad $T/app/breaks
 
 # the release: launch.sh and friends, a binary, a loop, a pre-chopped bank, and a
 # columbia.sav that must never reach the user's folder
-R=$T/rel/App/ColumbiaStreet
+R=$T/rel/Apps/ColumbiaStreet
 cp dist/ColumbiaStreet/launch.sh dist/ColumbiaStreet/config.json dist/ColumbiaStreet/icon.png \
     dist/ColumbiaStreet/cacert.pem $R/
 cp build/cs_update $R/columbia
@@ -22,9 +22,9 @@ echo 9.9.9 > $R/VERSION
 head -c 300000 /dev/urandom > $R/breaks/LOOP_150bpm.wav
 head -c 20000 /dev/urandom > $R/breaks/CHOP/001.wav
 echo theirs > $R/columbia.sav
-(cd $T/rel && zip -qr ColumbiaStreet-miyoo.zip App)
+(cd $T/rel && zip -qr ColumbiaStreet-brick.zip Apps)
 
-# the Miyoo's folder: an older version, the user's song and break, and one sample
+# the device's folder: an older version, the user's song and break, and one sample
 # that's already the same as the release's (dated 2001, so we can tell it's left alone)
 A=$T/app
 cp dist/ColumbiaStreet/cacert.pem $A/
@@ -37,12 +37,12 @@ cp $R/breaks/LOOP_150bpm.wav $A/breaks/
 touch -t 200101010000 $A/breaks/LOOP_150bpm.wav
 
 # the same release with its zipped binary damaged (the CRC check must catch it)
-cp $T/rel/ColumbiaStreet-miyoo.zip $T/bad/
+cp $T/rel/ColumbiaStreet-brick.zip $T/bad/
 off=$(python3 -c '
 import sys, zipfile
-z = zipfile.ZipFile(sys.argv[1]); i = z.getinfo("App/ColumbiaStreet/columbia")
-print(i.header_offset + 30 + len(i.filename) + len(i.extra) + i.compress_size // 2)' $T/bad/ColumbiaStreet-miyoo.zip)
-printf 'XXXXXXXX' | dd of=$T/bad/ColumbiaStreet-miyoo.zip bs=1 seek="$off" conv=notrunc 2>/dev/null
+z = zipfile.ZipFile(sys.argv[1]); i = z.getinfo("Apps/ColumbiaStreet/columbia")
+print(i.header_offset + 30 + len(i.filename) + len(i.extra) + i.compress_size // 2)' $T/bad/ColumbiaStreet-brick.zip)
+printf 'XXXXXXXX' | dd of=$T/bad/ColumbiaStreet-brick.zip bs=1 seek="$off" conv=notrunc 2>/dev/null
 
 python3 tools/fake_github.py $T/rel --port $PORT --tag v9.9.9 &
 good=$!

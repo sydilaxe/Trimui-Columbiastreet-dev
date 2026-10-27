@@ -1,6 +1,6 @@
 /* Host updater: does what the app does when you press A on the update prompt,
  * from the command line, for tests (tools/fake_github.py) and for trying a
- * release before it reaches the Miyoo.
+ * release before it reaches the TrimUI.
  *
  * usage: cs_update APP_DIR [--force]
  *   checks GitHub (or CS_UPDATE_API) for a release newer than CS_VERSION and

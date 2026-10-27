@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
-# Install or update Columbia Street on a Miyoo Mini Plus running OnionOS. Run it on a computer
-# on the same network as the Miyoo:
+# Install or update Columbia Street on a TrimUI Brick, Brick Hammer or Brick Pro. Run it on a
+# computer on the same network as the TrimUI:
 #
-#   curl -fsSL https://raw.githubusercontent.com/sydilaxe/ColumbiaStreet-dev/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/main/install.sh | bash
 #
-# It finds the Miyoo over SSH (turn SSH on in Onion: Apps > Tweaks > Network), compares the
-# installed version with the latest GitHub release, and copies the new build to
-# SD:/App/ColumbiaStreet if the release is newer. Your song (columbia.sav) and any breaks or
-# basses you added stay as they are.
+# It finds the TrimUI over SSH (the firmware's SSH server must be on), compares the installed
+# version with the latest GitHub release, and copies the new build to SD:/Apps/ColumbiaStreet if
+# the release is newer. Your song (columbia.sav) and any breaks or basses you added stay as they
+# are.
 #
 #   CS_HOST=192.168.1.28    skip the scan and use this address
-#   CS_USER=onion           SSH user (Onion's default login is onion / onion)
-#   CS_FORCE=1              reinstall even if the Miyoo already has the latest version
+#   CS_USER=root            SSH user (root by default)
+#   CS_DEVICE=brickpro      the Brick Pro's build (with the sticks); brick for the Brick and Brick
+#                           Hammer. An installed copy says which it is, so this is only needed once.
+#   CS_FORCE=1              reinstall even if the TrimUI already has the latest version
 #
 # The address that worked is saved in ~/.config/columbiastreet/host and tried first next time.
 
 set -euo pipefail
 
-REPO=sydilaxe/ColumbiaStreet-dev
-ASSET=ColumbiaStreet-miyoo.zip
-APPS=/mnt/SDCARD/App
-SSH_USER=${CS_USER:-onion}
+REPO=sydilaxe/Trimui-Columbiastreet-dev
+APPS=/mnt/SDCARD/Apps
+SSH_USER=${CS_USER:-root}
 SAVED=${XDG_CONFIG_HOME:-$HOME/.config}/columbiastreet/host
 
 say() { printf 'columbia: %s\n' "$*" >&2; }
@@ -59,25 +60,28 @@ local_ip() {
     fi
 }
 
-# probe every address on this machine's /24 at once; Onion's sshd is dropbear, which sets
-# the Miyoo apart from the OpenSSH hosts on a typical home network
+# probe every address on this machine's /24 at once; the handhelds' sshd is usually dropbear,
+# which sets them apart from the OpenSSH hosts on a typical home network (any SSH host is
+# offered when no dropbear answers)
 scan() {
     local me prefix i line found=()
     me=$(local_ip || true)
-    [ -n "$me" ] || die "can't work out this computer's LAN address; set CS_HOST=<miyoo ip>"
+    [ -n "$me" ] || die "can't work out this computer's LAN address; set CS_HOST=<trimui ip>"
     prefix=${me%.*}
-    say "looking for the Miyoo on $prefix.0/24..."
+    say "looking for the TrimUI on $prefix.0/24..."
     for i in $(seq 1 254); do
         [ "$prefix.$i" = "$me" ] || probe "$prefix.$i" &
     done >"$tmp/scan"
     sleep 3
     { kill $(jobs -p) || true; wait; } 2>/dev/null
     while read -r line; do found+=("$line"); done < <(grep -i dropbear "$tmp/scan" | sort -t. -k4 -n)
+    if [ ${#found[@]} -eq 0 ]; then
+        while read -r line; do found+=("$line"); done < <(sort -t. -k4 -n "$tmp/scan")
+    fi
 
     if [ ${#found[@]} -eq 0 ]; then
-        say "no Miyoo answered on $prefix.0/24."
-        say "turn on SSH in Onion (Apps > Tweaks > Network > SSH), or set CS_HOST=<miyoo ip>"
-        [ -s "$tmp/scan" ] && say "other SSH hosts: $(cut -d' ' -f1 "$tmp/scan" | tr '\n' ' ')"
+        say "no SSH server answered on $prefix.0/24."
+        say "turn on SSH on the TrimUI, or set CS_HOST=<trimui ip>"
         exit 1
     elif [ ${#found[@]} -eq 1 ]; then
         host=${found[0]%% *}
@@ -101,21 +105,21 @@ newer() {
         exit 1 }'
 }
 
-on_miyoo() {
+on_device() {
     ssh -o ControlMaster=auto -o ControlPath="$tmp/ssh" -o ControlPersist=120 \
         -o StrictHostKeyChecking=accept-new -o HostKeyAlgorithms=+ssh-rsa \
         -o ConnectTimeout=5 "$SSH_USER@$host" "$@"
 }
 
 main() {
-    local c latest installed
+    local c latest installed device asset
 
     for c in curl unzip ssh tar awk; do
         command -v "$c" >/dev/null || die "this needs $c"
     done
 
     tmp=$(mktemp -d)
-    trap 'ssh -o ControlPath="$tmp/ssh" -O exit miyoo 2>/dev/null || true; rm -rf "$tmp"' EXIT
+    trap 'ssh -o ControlPath="$tmp/ssh" -O exit trimui 2>/dev/null || true; rm -rf "$tmp"' EXIT
 
     latest=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" |
         sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1) || true
@@ -134,36 +138,48 @@ main() {
     fi
     [ -n "$host" ] || scan
 
-    say "connecting to $SSH_USER@$host (Onion's default password is onion)"
-    # the installed version, or nothing (v0.2.0 and older have no VERSION file)
-    installed=$(on_miyoo "test -d $APPS || exit 3; cat $APPS/ColumbiaStreet/VERSION 2>/dev/null; true" </dev/null) ||
-        die "couldn't log in to $host, or it has no $APPS (is it the OnionOS card?)"
+    say "connecting to $SSH_USER@$host"
+    # the installed version and build (brick / brickpro), or nothing
+    installed=$(on_device "test -d $APPS || exit 3; d=$APPS/ColumbiaStreet;
+        echo \"\$(cat \$d/VERSION 2>/dev/null) \$(cat \$d/DEVICE 2>/dev/null)\"" </dev/null) ||
+        die "couldn't log in to $host, or it has no $APPS (is it the TrimUI card?)"
     mkdir -p "$(dirname "$SAVED")" && echo "$host" >"$SAVED"
     installed=$(printf '%s\n' "$installed" | head -n 1)
+    device=${CS_DEVICE:-${installed#* }}
+    installed=${installed%% *}
+    case $device in
+    brick | brickpro) ;;
+    "")
+        device=brick
+        say "installing the Brick / Brick Hammer build (CS_DEVICE=brickpro for the Brick Pro's)"
+        ;;
+    *) die "CS_DEVICE is brick or brickpro, not $device" ;;
+    esac
+    asset=ColumbiaStreet-$device.zip
 
     if [ -z "$installed" ]; then
-        say "the Miyoo has no versioned Columbia Street yet"
+        say "the TrimUI has no Columbia Street yet"
     elif [ "${CS_FORCE:-}" != 1 ] && ! newer "$latest" "$installed"; then
-        say "the Miyoo already has v$installed, nothing to do (CS_FORCE=1 reinstalls)"
+        say "the TrimUI already has v$installed, nothing to do (CS_FORCE=1 reinstalls)"
         return
     else
-        say "the Miyoo has v$installed"
+        say "the TrimUI has v$installed"
     fi
 
-    if on_miyoo "pidof columbia" </dev/null >/dev/null; then
-        die "Columbia Street is running on the Miyoo; quit it (MENU) and run this again"
+    if on_device "pidof columbia" </dev/null >/dev/null; then
+        die "Columbia Street is running on the TrimUI; quit it (MENU) and run this again"
     fi
 
-    say "downloading v$latest..."
-    curl -fsSL -o "$tmp/$ASSET" "https://github.com/$REPO/releases/download/v$latest/$ASSET"
-    unzip -q "$tmp/$ASSET" -d "$tmp/zip"
-    [ -f "$tmp/zip/App/ColumbiaStreet/columbia" ] || die "the release zip has no App/ColumbiaStreet/columbia"
+    say "downloading v$latest ($asset)..."
+    curl -fsSL -o "$tmp/$asset" "https://github.com/$REPO/releases/download/v$latest/$asset"
+    unzip -q "$tmp/$asset" -d "$tmp/zip"
+    [ -f "$tmp/zip/Apps/ColumbiaStreet/columbia" ] || die "the release zip has no Apps/ColumbiaStreet/columbia"
     # the song is the user's (releases don't carry one, but never overwrite it)
-    rm -f "$tmp/zip/App/ColumbiaStreet/"columbia.sav*
+    rm -f "$tmp/zip/Apps/ColumbiaStreet/"columbia.sav*
 
     say "copying to $host:$APPS/ColumbiaStreet..."
-    (cd "$tmp/zip/App" && COPYFILE_DISABLE=1 tar --format=ustar -cf - ColumbiaStreet) |
-        on_miyoo "tar -xf - -C $APPS && sync"
+    (cd "$tmp/zip/Apps" && COPYFILE_DISABLE=1 tar --format=ustar -cf - ColumbiaStreet) |
+        on_device "tar -xf - -C $APPS && sync"
     say "Columbia Street v$latest is installed. Launch it from Apps."
 }
 

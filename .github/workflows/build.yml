@@ -13,28 +13,38 @@ on:
         default: ""
 
 jobs:
-  miyoo:
-    name: Miyoo Mini Plus package
+  trimui:
+    name: TrimUI packages (Brick / Brick Hammer, Brick Pro)
     runs-on: ubuntu-latest
-    container: aemiii91/miyoomini-toolchain:latest
     steps:
       - uses: actions/checkout@v4
       - name: Build
         run: |
           # generated files are committed; keep make from regenerating them
           touch src/font_data.h dist/ColumbiaStreet/icon.png
-          command -v zip >/dev/null && command -v curl >/dev/null && command -v bzip2 >/dev/null ||
-            (apt-get update && apt-get install -y zip curl bzip2)
-          make -j"$(nproc)" package CROSS=/opt/miyoomini-toolchain/usr/bin/arm-linux-gnueabihf-
-          ls -l build/ColumbiaStreet-miyoo.zip
-          unzip -l build/ColumbiaStreet-miyoo.zip | grep -q "App/ColumbiaStreet/breaks/AMEN_153bpm.wav"
-          # the self-updater needs these: the CA bundle for HTTPS, and VERSION for install.sh
-          unzip -l build/ColumbiaStreet-miyoo.zip | grep -q "App/ColumbiaStreet/cacert.pem"
-          test "$(unzip -p build/ColumbiaStreet-miyoo.zip App/ColumbiaStreet/VERSION)" = "$(make -s version)"
+          pip install ziglang==0.14.1
+          make -j"$(nproc)" package
+          for d in brick brickpro; do
+            z=build/ColumbiaStreet-$d.zip
+            ls -l $z
+            unzip -l $z | grep -q "Apps/ColumbiaStreet/columbia$"
+            unzip -l $z | grep -q "Apps/ColumbiaStreet/breaks/AMEN_153bpm.wav"
+            # the self-updater needs these: the CA bundle for HTTPS, and VERSION and DEVICE for install.sh
+            unzip -l $z | grep -q "Apps/ColumbiaStreet/cacert.pem"
+            test "$(unzip -p $z Apps/ColumbiaStreet/VERSION)" = "$(make -s version)"
+            test "$(unzip -p $z Apps/ColumbiaStreet/DEVICE)" = $d
+            file build/$d/columbia | grep -q "ARM aarch64"
+          done
+          # the two builds differ by the Brick Pro's sticks (and the zip each updates from)
+          ! cmp -s build/brick/columbia build/brickpro/columbia
+          strings build/brick/columbia | grep -qx "/ColumbiaStreet-brick.zip"
+          strings build/brickpro/columbia | grep -qx "/ColumbiaStreet-brickpro.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: ColumbiaStreet-miyoo
-          path: build/ColumbiaStreet-miyoo.zip
+          name: ColumbiaStreet-trimui
+          path: |
+            build/ColumbiaStreet-brick.zip
+            build/ColumbiaStreet-brickpro.zip
 
   test:
     name: Engine and UI tests (host)
@@ -69,6 +79,10 @@ jobs:
           grep -q "^clock out: 2 PPQN at 120 BPM on the left -> 16 pulses .* other values 0" $r
           grep -q "^clock out stopped: pulses 0 (want 0)" $r
           grep -q "^update prompt: shown 1, A installs 1, B closes it 1, pattern untouched 1" $r
+          # USB MIDI clock and the Brick Pro's sticks
+          grep -q "^midi clock in: START plays 1 from the first step 1, 120 BPM -> .* (1), phase within .* (want under 0.1: 1), STOP stops 1" $r
+          grep -q "^midi clock out: START 1, .*(want 192: 1), STOP 1" $r
+          grep -q "^stick: .*(darker: 1), .*(open again: 1); fx: stick 1, R2 first 1, back 1, off 1" $r
       - name: Self-update against a local fake GitHub
         run: make update-test
       - uses: actions/upload-artifact@v4
@@ -81,7 +95,7 @@ jobs:
     name: Publish release
     # runs for: a pushed v* tag, a release created on the website, or a manual run with a tag filled in
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || inputs.release_tag != ''
-    needs: [miyoo, test]
+    needs: [trimui, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -96,16 +110,16 @@ jobs:
           [ "$TAG" = "v$v" ] || { echo "::error::tag $TAG doesn't match CS_VERSION $v in src/engine.h"; exit 1; }
       - uses: actions/download-artifact@v4
         with:
-          name: ColumbiaStreet-miyoo
-      - name: Create the GitHub release with the Miyoo package
+          name: ColumbiaStreet-trimui
+      - name: Create the GitHub release with the TrimUI packages
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" ColumbiaStreet-miyoo.zip --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$TAG" ColumbiaStreet-brick.zip ColumbiaStreet-brickpro.zip --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" ColumbiaStreet-miyoo.zip \
+            gh release create "$TAG" ColumbiaStreet-brick.zip ColumbiaStreet-brickpro.zip \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Columbia Street $TAG" \

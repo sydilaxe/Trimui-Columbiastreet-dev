@@ -87,6 +87,7 @@ typedef struct {
 typedef struct {
     int playing;
     int filter_held;
+    float sweep_hand;      /* the Brick Pro's left stick: 0 open .. 1 the L2 sweep closed */
     int fx;                /* punch-in effect held, or -1 */
     int queued_slot;       /* pattern slot loading at the next bar, or -1 */
     int cur_slot;          /* slot last loaded or saved, or -1 */

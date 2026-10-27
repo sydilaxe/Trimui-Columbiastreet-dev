@@ -29,4 +29,9 @@ void ui_draw_loading(uint32_t *fb, const char *msg);
 int ui_quit_requested(void);
 int ui_take_changed(void);
 int ui_page(void);
+void ui_notice(const char *msg); /* a message on screen (main thread only): USB devices coming and going */
+/* the Brick Pro's sticks: a punch-in effect (FX_*) while the right stick is
+ * pushed, or -1; and a tap of the tempo (L3) */
+void ui_stick_fx(int fx);
+void ui_tap_tempo(void);
 void ui_set_page(int p); /* for the test harness */

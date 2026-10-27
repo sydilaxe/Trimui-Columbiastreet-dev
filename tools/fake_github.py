@@ -2,21 +2,21 @@
 """Local stand-in for GitHub's releases, for testing Columbia Street's self-update without the
 internet. From RadioScan.
 
-Serves DIR/ColumbiaStreet-miyoo.zip as the asset of a release tagged TAG, the way GitHub does:
+Serves DIR/ColumbiaStreet-brick.zip (or --asset) as the asset of a release tagged TAG, the way
+GitHub does:
 the API's latest-release JSON, then a download link that redirects (with a ~1000-character
 signed URL) to the file itself.
 
   python3 tools/fake_github.py DIR [--port 8766] [--tag v9.9.9]
   CS_UPDATE_API=http://127.0.0.1:8766/latest.json build/cs_update APP_DIR
 
-Endpoints:  /latest.json  /download/TAG/ColumbiaStreet-miyoo.zip  /asset?sig=...
+Endpoints:  /latest.json  /download/TAG/ColumbiaStreet-brick.zip  /asset?sig=...
 """
 import argparse
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ASSET = "ColumbiaStreet-miyoo.zip"
 
 
 def main():
@@ -24,7 +24,9 @@ def main():
     ap.add_argument("dir")
     ap.add_argument("--port", type=int, default=8766)
     ap.add_argument("--tag", default="v9.9.9")
+    ap.add_argument("--asset", default="ColumbiaStreet-brick.zip")
     args = ap.parse_args()
+    ASSET = args.asset
     base = f"http://127.0.0.1:{args.port}"
 
     class Handler(BaseHTTPRequestHandler):

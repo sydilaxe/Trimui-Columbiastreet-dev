@@ -1,6 +1,7 @@
 # Columbia Street
 
-A five-channel jungle sequencer for the Miyoo Mini Plus running OnionOS.
+A five-channel jungle sequencer for the TrimUI Brick, Brick Hammer and Brick Pro running TrimUI OS,
+ported from the [Miyoo Mini Plus version](https://github.com/sydilaxe/Miyoo-ColumbiaStreet-dev).
 
 Four break channels play slices of sampled drum breaks: the Amen and other loops, chopped at their
 hits. The fifth channel is a bass: a sub, a Reese, an 808, an FM growl, or one of 20 jungle bass
@@ -15,51 +16,51 @@ Every break channel has its own pitch, a filter, a **bit depth from 1 to 24 bits
 reduction and a **compressor**. On the bus are a glue compressor, drive, a reverb, a
 tempo-synced L2 filter sweep, and punch-in repeat, reverse and tape-stop effects. Eight
 pattern slots switch on the bar line, and the unit syncs tempo over Wi-Fi with HI5 and
-Jaffedrone, or leads other gear from a mono + clock-pulse output.
+Jaffedrone, leads other gear from a mono + clock-pulse output, and sends and follows MIDI clock
+over USB.
 
 ## Install
 
-Turn on SSH on the Miyoo (Apps > Tweaks > Network > SSH). Then run this on a computer on the
-same network:
+There are two builds: `ColumbiaStreet-brick.zip` for the **Brick** and **Brick Hammer**, and
+`ColumbiaStreet-brickpro.zip` for the **Brick Pro** (it adds the analog sticks).
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/sydilaxe/ColumbiaStreet-dev/main/install.sh | bash
-```
-
-The script finds the Miyoo by scanning the local /24 for Onion's SSH server. It checks the
-installed version against the latest [release](../../releases), and if the release is newer it
-copies it to `SD:/App/ColumbiaStreet`. Your song (`columbia.sav`) and any breaks or basses you
-added are kept. Run it again any time to update. Log in with Onion's default `onion` / `onion`.
-The address that worked is saved in `~/.config/columbiastreet/host`. To skip the scan, set
-`CS_HOST`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/sydilaxe/ColumbiaStreet-dev/main/install.sh | CS_HOST=192.168.1.28 bash
-```
-
-`CS_USER` changes the SSH user. `CS_FORCE=1` reinstalls even when the version matches. Quit
-Columbia Street on the Miyoo before updating.
-
-Without SSH, install by hand:
-
-1. Build it (see below), or download `ColumbiaStreet-miyoo.zip` from the latest release, or
-   from the artifacts of the latest run on the Actions tab.
-2. Unzip at the root of the OnionOS SD card, so the app lands in `SD:/App/ColumbiaStreet`. With
-   the card mounted you can also run `make install SD=/run/media/$USER/<card>`.
+1. Download the zip for your device from the latest [release](../../releases), or from the
+   artifacts of the latest run on the Actions tab, or build it (see below).
+2. Unzip it at the root of the SD card, so the app lands in `SD:/Apps/ColumbiaStreet`. With the
+   card mounted you can also run `make install SD=/path/to/card` (add `DEVICE=brickpro` for the
+   Brick Pro).
 3. Launch **Columbia Street** from Apps. Press MENU to quit.
 
-The state autosaves to `columbia.sav` in the app folder.
+The state autosaves to `columbia.sav` in the app folder. A song saved on the Miyoo loads as it is:
+copy its `columbia.sav` into the folder.
 
-### Updating from the Miyoo
+### Over Wi-Fi
 
-From v0.3.0 on, Columbia Street keeps itself up to date. Five seconds after it starts, it asks
-GitHub for the latest release, retrying each minute (up to five times) while Wi-Fi comes up.
-When there's a newer one it asks **A: update and restart / B: not now**. A downloads the
-release's `ColumbiaStreet-miyoo.zip` (about 5 MB) while the music keeps playing. It checks every
-file, swaps in the ones that changed and starts the new version. Your song and your own breaks
-stay as they are. If anything goes wrong on the way, nothing is changed. B asks again next time
-you open the app. `CS_UPDATE=0` in `launch.sh` turns the check off. An update replaces
-`launch.sh`, so set any of its switches again afterwards.
+With the TrimUI's SSH server on, run this on a computer on the same network:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/main/install.sh | bash
+```
+
+The script scans the local /24 for an SSH server (a handheld's dropbear first), checks the
+installed version against the latest release, and if the release is newer copies it to
+`SD:/Apps/ColumbiaStreet`. Your song (`columbia.sav`) and any breaks or basses you added are kept.
+It logs in as `root` (`CS_USER` changes it). The first time, it installs the Brick build; set
+`CS_DEVICE=brickpro` for the Brick Pro's. After that the installed copy says which build it is.
+The address that worked is saved in `~/.config/columbiastreet/host`; `CS_HOST=192.168.1.28` skips
+the scan. `CS_FORCE=1` reinstalls even when the version matches. Quit Columbia Street on the
+TrimUI before updating.
+
+### Updating from the TrimUI
+
+Columbia Street keeps itself up to date. Five seconds after it starts, it asks GitHub for the
+latest release, retrying each minute (up to five times) while Wi-Fi comes up. When there's a
+newer one it asks **A: update and restart / B: not now**. A downloads the release's zip for this
+device (about 5 MB) while the music keeps playing. It checks every file, swaps in the ones that
+changed and starts the new version. Your song and your own breaks stay as they are. If anything
+goes wrong on the way, nothing is changed. B asks again next time you open the app.
+`CS_UPDATE=0` in `launch.sh` turns the check off. An update replaces `launch.sh`, so set any of
+its switches again afterwards.
 
 ## The breaks
 
@@ -82,7 +83,7 @@ one.
 
 ### Your own breaks
 
-Drop any break into `App/ColumbiaStreet/breaks/` (Apache, Think, Funky Drummer...). A `.wav`
+Drop any break into `Apps/ColumbiaStreet/breaks/` (Apache, Think, Funky Drummer...). A `.wav`
 file is a loop, sliced at its hits. Put the tempo in its name (`APACHE_115bpm.wav`) and the
 slices land on the 16th grid; without a tempo, it is guessed from the length. A folder of
 `.wav` files is a pre-chopped break, one slice per file in name order. Bass one-shots go in
@@ -136,12 +137,53 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
   pattern into it, R2+Y clears it. Below them are the tempo, the Wi-Fi sync mode and the
   output row (OUTPUT, CLOCK ON, PPQN, PULSE): left / right picks a setting, X / Y changes it.
 
+## Brick Pro: the sticks
+
+The Brick Pro build adds the two analog sticks, for playing the bus live. They spring back when
+let go, and nothing they do is saved.
+
+| Stick | Does |
+| --- | --- |
+| left, pushed any way | Closes the L2 low-pass by hand: the further, the darker. Let go, it opens again |
+| right, up / right | Repeat the last 1/8 / 1/16, as R2 + up / right |
+| right, left / down | Reverse / tape stop, as R2 + left / down |
+| L3 (click) | Tap tempo |
+| R3 (click) | A new jungle beat, as SELECT |
+
+R2 + the d-pad wins over the right stick while both are held.
+
+## USB: MIDI clock and audio
+
+The Brick's USB-C port takes class-compliant MIDI and audio devices, through an OTG adapter or a
+hub. They are found as they are plugged in, and a message names each one.
+
+- **MIDI clock out:** while the sequencer plays and no clock is coming in, Columbia Street sends
+  clock (24 a quarter note), START and STOP to every MIDI port. The clock is timed to the sound as
+  it is heard, so a drum machine or synth lands on the beat.
+- **MIDI clock in:** the tempo follows it, and its phase is held by trimming the playback speed, as
+  Wi-Fi sync does. START plays from the first step, CONTINUE and song position pick up where they
+  say, STOP stops.
+- **Audio:** a USB sound card or DAC takes the output while it is plugged in, and the speaker and
+  headphones take it back when it is unplugged.
+
+Settings in `Apps/ColumbiaStreet/launch.sh`, before `./columbia`: `CS_MIDI=0` turns MIDI off,
+`CS_MIDI_CLOCK=0` sends no clock, `CS_MIDI_FOLLOW=0` ignores clock coming in. `CS_AUDIO=internal`
+keeps the speaker; `CS_AUDIO=<name>` picks a device by name (`log.txt` lists what was opened).
+
+## Audio
+
+The sound is made in 512-frame buffers at 48 kHz (about 11 ms, half the Miyoo's delay), with
+memory locked so it never waits for a page to be read back in; the screen runs below it at 30
+frames a second, and the buttons are read every few milliseconds. If you hear crackles, set
+`CS_BUFFER=1024`. `CS_RATE=44100` does a little less work. `CS_ROTATE=180` turns the picture and
+`CS_JOYMAP=A=1,B=0,...` renumbers the buttons, for a firmware that differs.
+
 ## Wi-Fi sync
 
 Columbia Street speaks HI5S, the sync protocol of HI5 and Jaffedrone. Units on the same network
 share tempo, bar phase and transport over UDP broadcast on port 5150. Set the mode on the SONG
 page: OFF, AUTO, LEAD or FOLLOW. A unit set to LEAD wins; otherwise the lowest id leads.
-OnionOS Wi-Fi must be on.
+The TrimUI's Wi-Fi must be on.
 
 ## Clock out (mono + clock)
 
@@ -156,39 +198,42 @@ with STEREO. Songs saved by v0.1 load in STEREO.
 
 ## Building
 
-You need [zig](https://ziglang.org/) 0.14 for the cross-compile; the Makefile looks in
-`~/.local/opt/zig-aarch64-linux-0.14.1/zig`, or set `ZIG=...` (`pip install ziglang==0.14.1`
-also provides it). You also need `curl`, `bzip2`, `python3` (with Pillow for the icon), and for `make
-test` a host C compiler and ImageMagick.
+You need [zig](https://ziglang.org/) 0.14 for the cross-compile: `zig` on the path, `ZIG=...`, or
+`pip install ziglang==0.14.1` (the Makefile then uses `python3 -m ziglang`). You also need `curl`,
+`bzip2`, `zip`, `python3` (with Pillow for the icon), and for `make test` a host C compiler and
+ImageMagick.
 
 ```sh
-make              # cross-compile dist/ColumbiaStreet/columbia and fetch the samples
+make              # cross-compile build/brick/columbia and build/brickpro/columbia, fetch the samples
+make package      # build/ColumbiaStreet-brick.zip and build/ColumbiaStreet-brickpro.zip, as CI does
 make test         # host harness: screenshots, audio and engine checks into build/test
 make update-test  # the self-update end to end, against tools/fake_github.py
-make zip          # package dist/ColumbiaStreet as build/ColumbiaStreet.zip
-make install SD=/path/to/mounted/sdcard
-make package CROSS=/opt/miyoomini-toolchain/usr/bin/arm-linux-gnueabihf-   # OnionOS gcc, as CI does
+make install SD=/path/to/mounted/sdcard [DEVICE=brickpro]
 ```
+
+Both builds are aarch64 for glibc 2.28, for the Cortex-A53. They link against a stand-in
+`libSDL2-2.0.so.0` made by `tools/mksdlstub.py`; the device's own SDL2 is used at run time.
+`-DCS_BRICKPRO` adds the sticks and makes the updater fetch the Brick Pro's zip.
 
 ### Releases
 
-CI (`.github/workflows/build.yml`) builds the Miyoo package and runs the tests on every push.
+CI (`.github/workflows/build.yml`) builds both TrimUI packages with zig and runs the tests on
+every push.
 To publish a release, first set `CS_VERSION` in `src/engine.h` to the new version. The app
 compares it with the release tag to decide whether it's out of date, so the release job
 refuses a tag that doesn't match (`make version` prints it). Then push the tag (`git tag v0.3.0
 && git push origin v0.3.0`), or run the workflow from the Actions tab with the tag in
 `release_tag`. Releases are full releases marked Latest, since the updater and `install.sh`
-read GitHub's latest release, and that skips pre-releases. They have `ColumbiaStreet-miyoo.zip`
-attached and `.github/release-notes.md` as their notes. Running again for the same tag replaces
-the zip.
+read GitHub's latest release, and that skips pre-releases. They have `ColumbiaStreet-brick.zip`
+and `ColumbiaStreet-brickpro.zip` attached and `.github/release-notes.md` as their notes. Running again for the same tag replaces
+the zips.
 
 `build/cs_update APP_DIR [--force]` (built by `make update-test`) checks for a newer release
 and installs it into `APP_DIR`, the way the app does. Point `CS_UPDATE_API` at
 `tools/fake_github.py` (`http://127.0.0.1:8766/latest.json`) to test an update without
 publishing one.
 
-The build links against Onion's own MI_AO/MI_GFX-backed SDL 1.2, which `make` downloads into
-`third_party/onion-lib/` (not committed). The updater's HTTPS comes from
+The updater's HTTPS comes from
 [Mbed TLS](https://github.com/Mbed-TLS/mbedtls) 3.6.7, which `make` downloads (pinned by its
 SHA-256) into `third_party/mbedtls/` (not committed) and links in statically.
 
@@ -202,19 +247,21 @@ SHA-256) into `third_party/mbedtls/` (not committed) and links in statically.
 | `src/gfx.c`, `src/font_data.h` | Framebuffer drawing and the font |
 | `src/sync.c` | Wi-Fi sync |
 | `src/update.c`, `src/net.c` | Self-update: GitHub's latest release, the download and unzip; HTTPS |
-| `src/main_sdl.c` | Device entry point (SDL audio + video) |
+| `src/main_trimui.c` | Device entry point (SDL2: video scaled 1.6x, buttons, sticks, USB audio) |
+| `src/midi.c` | USB MIDI clock in and out (ALSA raw MIDI) |
 | `src/main_test.c` | Host test harness |
 | `src/main_update.c` | Host updater (`build/cs_update`) for tests |
 | `install.sh` | The one-line installer, over SSH |
 | `tools/fetch_samples.sh` | Fetches the curated breaks and basses |
 | `tools/fake_github.py`, `tools/update_test.sh` | A local GitHub stand-in and the update test |
 | `tools/mbedtls.mk` | Builds Mbed TLS for each toolchain |
+| `tools/mksdlstub.py` | The stand-in SDL2 library to link against |
 | `dist/ColumbiaStreet/` | The app folder as installed on the card |
 
 ## License
 
-MIT. See [LICENSE](LICENSE). The SDL 1.2 headers in `third_party/` and Onion's SDL library
-are under the LGPL; see `third_party/SDL-1.2.15-headers/COPYING`. The font is Noto Sans Mono
+MIT. See [LICENSE](LICENSE). The SDL2 headers in `third_party/` are under the zlib licence; see
+`third_party/SDL2-2.30.9-headers/LICENSE.txt`. The font is Noto Sans Mono
 (SIL OFL 1.1). Mbed TLS is under Apache-2.0 (or GPL-2.0-or-later); the app folder carries its
 licence as `LICENSE-mbedtls.txt`. `dist/ColumbiaStreet/cacert.pem` is curl's extract of
 Mozilla's CA certificates (MPL 2.0). The samples are not part of this repo and are not covered by its licence.

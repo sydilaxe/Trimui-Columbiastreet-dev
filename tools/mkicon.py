@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Draw the OnionOS app icon: a sliced breakbeat waveform over a brick-orange bar.
+"""Draw the TrimUI OS app icon: a sliced breakbeat waveform over a brick-orange bar
+(drawn on an 80-unit grid, saved at OUT_SIZE pixels: 128 for the Brick's 1024x768 screen).
 
 usage: mkicon.py OUT.png
 """
@@ -8,6 +9,7 @@ import random
 import sys
 from PIL import Image, ImageDraw
 
+OUT_SIZE = 128
 COLORS = [(255, 90, 70), (255, 180, 40), (90, 220, 140), (70, 180, 255), (180, 120, 255)]
 
 
@@ -32,7 +34,7 @@ def main():
             t = (x - start) / (end - start)
             a = amp * math.exp(-3.2 * t) * (0.55 + 0.45 * rnd.random())
             d.line([(x, mid - a), (x, mid + a)], fill=col, width=3)
-    im.resize((size, size), Image.LANCZOS).save(sys.argv[1])
+    im.resize((OUT_SIZE, OUT_SIZE), Image.LANCZOS).save(sys.argv[1])
 
 
 if __name__ == "__main__":

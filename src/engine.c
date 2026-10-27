@@ -889,8 +889,24 @@ typedef struct {
     float gL, gR, send;
 } BrkK;
 
+/* tiny numbers in the reverb's decaying tails are flushed to zero on 64-bit
+ * ARM (the TrimUI), so they never slow the sound down; the audio thread's
+ * own setting, made each call */
+static void flush_denormals(void)
+{
+#if defined(__aarch64__)
+    uint64_t fpcr;
+    __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+    if (!(fpcr & (1u << 24))) {
+        fpcr |= 1u << 24; /* FZ */
+        __asm__ volatile("msr fpcr, %0" : : "r"(fpcr));
+    }
+#endif
+}
+
 void engine_render(int16_t *out, int frames)
 {
+    flush_denormals();
     sps = sr * 15.f / song.bpm;
     if (step_phase > sps)
         step_phase = sps;
@@ -960,6 +976,9 @@ void engine_render(int16_t *out, int frames)
     /* the L2 sweep closes over the chosen time and reopens in a 16th */
     float close_k = 1.f / (sweep_steps[clampi(song.sweep_rate, 0, 3)] * sps);
     float open_k = 1.f / sps;
+    /* the stick: followed within about 30 ms; let go, it reopens as L2 does */
+    float hand = live.sweep_hand < 0.f ? 0.f : live.sweep_hand > 1.f ? 1.f : live.sweep_hand;
+    float hand_k = 1.f / (0.03f * sr);
 
     if (live.fx != fx_cur) {
         fx_cur = live.fx;
@@ -1053,13 +1072,13 @@ void engine_render(int16_t *out, int frames)
         else
             glue.gr_db = 0.f;
 
-        /* L2 sweep */
-        float tgt = live.filter_held ? 0.f : 1.f;
+        /* L2 sweep (or the stick, which moves it by hand) */
+        float tgt = live.filter_held ? 0.f : 1.f - hand;
         if (sweep_cut != tgt) {
             if (tgt < sweep_cut)
-                sweep_cut = fmaxf(tgt, sweep_cut - close_k);
+                sweep_cut = fmaxf(tgt, sweep_cut - (live.filter_held || hand <= 0.f ? close_k : hand_k));
             else
-                sweep_cut = fminf(tgt, sweep_cut + open_k);
+                sweep_cut = fminf(tgt, sweep_cut + (live.filter_held || hand <= 0.f ? open_k : hand_k));
         }
         if (sweep_cut < 0.999f) {
             if ((n & 15) == 0) /* coefficients every 16 samples */

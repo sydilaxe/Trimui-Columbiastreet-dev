@@ -1,7 +1,8 @@
 /* Headless host harness: plays a scripted button sequence over the real
  * samples, writes a WAV of the audio and a screenshot of each page, then
  * checks the engine: straight break playback, bit depth, compressor,
- * pattern generation, save / load and DSP time.
+ * pattern generation, save / load and DSP time; on the TrimUI's side, USB
+ * MIDI clock in and out and the Brick Pro's sticks.
  *
  * usage: cs_test OUTDIR [APP_DIR]   (APP_DIR holds breaks/ and bass/) */
 #include <math.h>
@@ -13,6 +14,7 @@
 #include "breaks.h"
 #include "engine.h"
 #include "gfx.h"
+#include "midi.h"
 #include "sync.h"
 #include "ui.h"
 #include "update.h"
@@ -550,6 +552,100 @@ int main(int argc, char **argv)
         printf("update prompt: shown %d, A installs %d, B closes it %d, pattern untouched %d\n", shown, started, closed,
                same);
         ui_set_update(NULL, NULL);
+    }
+    /* ---- USB MIDI (midi.c), bytes in as from a port: START plays from the
+     * first step, the tempo and the phase follow the clock, STOP stops */
+    {
+        static int16_t pcm[2048 * 2];
+        song_default();
+        engine_init(RATE);
+        engine_set_playing(0);
+        midi_reset();
+        midi_set_latency(0.f);
+        const uint8_t start = 0xfa, stop = 0xfc, tick = 0xf8;
+        uint64_t t = 1000000;
+        uint32_t trig0 = live.trig_count[0] + live.trig_count[1] + live.trig_count[2] + live.trig_count[3];
+        midi_feed(&start, 1, t);
+        int started = live.playing;
+        engine_render(pcm, 64);
+        int first = live.step == 0 &&
+                    live.trig_count[0] + live.trig_count[1] + live.trig_count[2] + live.trig_count[3] > trig0;
+        double worst = 0.0;
+        for (int i = 1; i <= 24 * 16; i++) { /* 16 beats at 120 BPM: a tick each 20.833 ms */
+            t += 20833;
+            midi_feed(&tick, 1, t);
+            engine_render(pcm, 1000); /* the time between ticks */
+            if (i > 24 * 12) {
+                double err = fabs(engine_position() - i / 6.0);
+                worst = err > worst ? err : worst;
+            }
+        }
+        float bpm_in = song.bpm;
+        int following = midi_following();
+        midi_feed(&stop, 1, t);
+        printf("midi clock in: START plays %d from the first step %d, 120 BPM -> %.1f (%d), "
+               "phase within %.3f steps (want under 0.1: %d), STOP stops %d\n",
+               started, first, bpm_in, fabsf(bpm_in - 120.f) < 0.5f && following, worst, worst < 0.1, !live.playing);
+
+        song_default();
+        song.bpm = 120.f;
+        engine_init(RATE);
+        engine_set_playing(1);
+        midi_reset();
+        midi_set_latency(0.f);
+        uint8_t out[64];
+        int ticks_out = 0, starts = 0, stops = 0;
+        t = 5000000;
+        for (int i = 0; i < 400; i++) { /* 4 s in 10 ms steps */
+            engine_render(pcm, RATE / 100);
+            t += 10000;
+            int n = midi_clock_step(t, out, sizeof out);
+            for (int k = 0; k < n; k++)
+                ticks_out += out[k] == 0xf8, starts += out[k] == 0xfa;
+        }
+        engine_set_playing(0);
+        int n = midi_clock_step(t + 10000, out, sizeof out);
+        for (int k = 0; k < n; k++)
+            stops += out[k] == 0xfc;
+        printf("midi clock out: START %d, %d ticks in 4 s at 120 BPM (want 192: %d), STOP %d\n", starts, ticks_out,
+               abs(ticks_out - 192) <= 1, stops);
+        midi_reset();
+    }
+
+    /* ---- the Brick Pro's sticks: the left closes the bus filter by hand and
+     * lets it go again; the right plays the punch-in effects, R2's d-pad first */
+    {
+        song_default();
+        engine_init(RATE);
+        engine_set_playing(1);
+        static float buf[RATE];
+        double hf[3];
+        for (int k = 0; k < 3; k++) {
+            live.sweep_hand = k == 1 ? 1.f : 0.f;
+            render_mono(buf, RATE / 2); /* settle */
+            render_mono(buf, RATE);
+            double e = 0.0;
+            for (int i = 1; i < RATE; i++)
+                e += (buf[i] - buf[i - 1]) * (double)(buf[i] - buf[i - 1]);
+            hf[k] = e;
+        }
+        live.sweep_hand = 0.f;
+        int fx_stick, fx_r2, fx_back, fx_off;
+        ui_stick_fx(FX_REVERSE);
+        fx_stick = live.fx == FX_REVERSE;
+        ui_button(BTN_R2, 1);
+        ui_button(BTN_UP, 1);
+        fx_r2 = live.fx == FX_REPEAT8;
+        ui_button(BTN_UP, 0);
+        ui_button(BTN_R2, 0);
+        fx_back = live.fx == FX_REVERSE;
+        ui_stick_fx(-1);
+        fx_off = live.fx == -1;
+        engine_set_playing(0);
+        printf("stick: filter closed by hand %.1f%% of the highs (darker: %d), let go %.0f%% (open again: %d); "
+               "fx: stick %d, R2 first %d, back %d, off %d\n",
+               100.0 * hf[1] / hf[0], hf[1] < 0.2 * hf[0], 100.0 * hf[2] / hf[0], hf[2] > 0.5 * hf[0], fx_stick, fx_r2,
+               fx_back, fx_off);
     }
     breaks_free();
     return 0;

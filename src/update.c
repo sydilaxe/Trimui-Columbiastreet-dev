@@ -12,7 +12,7 @@
 #include "net.h"
 
 #define API_LATEST "https://api.github.com/repos/" CS_REPO "/releases/latest"
-#define ZIP_DIR "App/ColumbiaStreet/"
+#define ZIP_DIR "Apps/ColumbiaStreet/" /* as TrimUI OS lists apps */
 #define BINARY "columbia"
 #define MAX_ZIP (64L << 20)
 #define MAX_FILES 512
@@ -543,7 +543,7 @@ int update_unzip(const unsigned char *zip, long len, const char *dir, char *err,
         snprintf(err, errlen, "the download isn't a zip");
         goto out;
     }
-    /* offsets are 64-bit so that a bad one can't wrap past the checks on the Miyoo's 32-bit longs */
+    /* offsets are 64-bit so that a bad one can't wrap past the checks on a 32-bit long (the Miyoo's) */
     typedef unsigned long long u64;
     unsigned entries = rd16(zip + eocd + 10);
     u64 cd = rd32(zip + eocd + 16);

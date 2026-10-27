@@ -42,6 +42,7 @@ static int pat_v, pat_r, chop_v, chop_p, bass_p, mix_v, mix_r, song_cur;
 static int held[BTN_COUNT], hold_ms[BTN_COUNT], rep_ms[BTN_COUNT], rep_n[BTN_COUNT];
 static int b_used; /* B was a modifier this press (PATTERN page) */
 static int fx_order[4], fx_norder;
+static int stick_fx = -1; /* the Brick Pro's right stick, or -1 */
 static uint32_t now_ms;
 static uint32_t taps[6];
 static int ntaps;
@@ -90,6 +91,7 @@ void ui_set_update(const UpdateStatus *status, void (*install)(void))
     upd_install = install;
 }
 
+void ui_notice(const char *msg) { say("%s", msg); }
 int ui_quit_requested(void) { return quit; }
 int ui_page(void) { return page; }
 void ui_set_page(int p) { page = p; }
@@ -107,11 +109,12 @@ static int is_dpad(int b) { return b <= BTN_RIGHT; }
 
 /* ---------------------------------------------------------------- input */
 
-/* R2 + up / right / left / down; the latest direction pressed wins */
+/* R2 + up / right / left / down; the latest direction pressed wins. The
+ * Brick Pro's right stick plays them too, when R2 isn't holding one. */
 static void update_fx(void)
 {
     static const int fx_of[4] = {FX_REPEAT8, FX_TAPESTOP, FX_REVERSE, FX_REPEAT16};
-    live.fx = -1;
+    live.fx = upd_open ? -1 : stick_fx;
     if (!held[BTN_R2])
         return;
     for (int i = fx_norder - 1; i >= 0; i--)
@@ -152,6 +155,24 @@ static void tap_tempo(void)
     bpm = bpm < 40.f ? 40.f : bpm > 250.f ? 250.f : bpm;
     song.bpm = roundf(bpm * 10.f) / 10.f;
     say("TAP  %.1f BPM", song.bpm);
+}
+
+void ui_stick_fx(int fx)
+{
+    ui_lock();
+    stick_fx = fx;
+    update_fx();
+    ui_unlock();
+}
+
+void ui_tap_tempo(void)
+{
+    if (upd_open)
+        return;
+    ui_lock();
+    tap_tempo();
+    changed = 1;
+    ui_unlock();
 }
 
 static void adjust_param(int v, int p, int dir, int repeats)

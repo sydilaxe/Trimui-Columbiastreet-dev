@@ -21,7 +21,7 @@
 #include "mbedtls/x509_crt.h"
 #include "psa/crypto.h"
 
-#define USER_AGENT "ColumbiaStreet/" CS_VERSION " (Miyoo Mini Plus)"
+#define USER_AGENT "ColumbiaStreet/" CS_VERSION " (TrimUI Brick)"
 
 /* ---------------------------------------------------------------- TLS */
 

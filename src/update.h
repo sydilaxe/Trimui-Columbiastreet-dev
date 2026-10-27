@@ -1,12 +1,17 @@
 /* Self-update, as in RadioScan: ask GitHub for the latest release, and if it is
- * newer than CS_VERSION, download its ColumbiaStreet-miyoo.zip and swap the new
- * files into the app folder. The song (columbia.sav) and any breaks or basses
- * you added stay as they are. ui.c reads the status; main_sdl.c drives it. */
+ * newer than CS_VERSION, download this device's zip (ColumbiaStreet-brick.zip,
+ * or -brickpro.zip in the Brick Pro build) and swap the new files into the app
+ * folder. The song (columbia.sav) and any breaks or basses you added stay as
+ * they are. ui.c reads the status; main_trimui.c drives it. */
 #pragma once
 #include <stddef.h>
 
-#define CS_REPO "sydilaxe/ColumbiaStreet-dev"
-#define CS_ASSET "ColumbiaStreet-miyoo.zip"
+#define CS_REPO "sydilaxe/Trimui-Columbiastreet-dev"
+#ifdef CS_BRICKPRO
+#define CS_ASSET "ColumbiaStreet-brickpro.zip"
+#else
+#define CS_ASSET "ColumbiaStreet-brick.zip"
+#endif
 
 /* exit status that tells launch.sh to start the app again (the new version) */
 #define RELAUNCH_STATUS 75
@@ -26,7 +31,7 @@ typedef struct UpdateStatus {
     volatile int state;
     volatile int progress;
     char latest[32]; /* "0.3.1" */
-    char url[1024];  /* the release's ColumbiaStreet-miyoo.zip */
+    char url[1024];  /* the release's CS_ASSET */
     char err[160];
 } UpdateStatus;
 
@@ -40,5 +45,5 @@ int update_install(const char *app_dir);
 
 /* true if the dotted version a ("v0.3.1" or "0.3.1") is newer than b */
 int version_newer(const char *a, const char *b);
-/* unpack the App/ColumbiaStreet/ folder of a zip into dir, keeping the user's files; 0 on success */
+/* unpack the Apps/ColumbiaStreet/ folder of a zip into dir, keeping the user's files; 0 on success */
 int update_unzip(const unsigned char *zip, long len, const char *dir, char *err, size_t errlen);
