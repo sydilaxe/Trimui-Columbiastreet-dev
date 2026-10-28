@@ -1,5 +1,5 @@
 /* MIDI over USB, from Jaffedrone: class-compliant drum machines, sequencers
- * and interfaces on the TrimUI's USB-C port (an OTG adapter or a hub), read
+ * and interfaces on the TrimUI's USB host port (the Brick's top USB-C), read
  * and written through ALSA's raw MIDI ports (/dev/snd/midiC*D*), so nothing
  * more is needed on the device. Ports are found as they are plugged in.
  *

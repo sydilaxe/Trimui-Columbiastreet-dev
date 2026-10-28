@@ -154,8 +154,10 @@ R2 + the d-pad wins over the right stick while both are held.
 
 ## USB: MIDI clock and audio
 
-The Brick's USB-C port takes class-compliant MIDI and audio devices, through an OTG adapter or a
-hub. They are found as they are plugged in, and a message names each one.
+The Brick has two USB-C ports: the top one is the USB host port, the bottom one charges. Plug
+class-compliant MIDI and audio devices into the **top** port, directly with a USB-C cable or
+through a hub. They are found as they are plugged in, and a message names each one. The port
+gives about 500 mA, so a device that draws more needs a powered hub.
 
 - **MIDI clock out:** while the sequencer plays and no clock is coming in, Columbia Street sends
   clock (24 a quarter note), START and STOP to every MIDI port. The clock is timed to the sound as
