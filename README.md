@@ -185,6 +185,12 @@ share tempo, bar phase and transport over UDP broadcast on port 5150. Set the mo
 page: OFF, AUTO, LEAD or FOLLOW. A unit set to LEAD wins; otherwise the lowest id leads.
 The TrimUI's Wi-Fi must be on.
 
+Followers line up what is heard, to within a millisecond or so: each packet carries the time it
+was sent, so Wi-Fi delays don't count, and units echo each other's packets to time the trip.
+Older HI5S units still sync with these, a few milliseconds less closely. Units of different apps
+should already line up; if one sounds early or late against another, `CS_SYNC_LATENCY` in
+`launch.sh` sets the frames its sound driver holds (the buffer size, 512, by default).
+
 ## Clock out (mono + clock)
 
 As on HI5, the SONG page's **OUTPUT** switches between STEREO and **MONO+CLK**: the sound in mono
@@ -246,6 +252,7 @@ SHA-256) into `third_party/mbedtls/` (not committed) and links in statically.
 | `src/ui.c` | Pages, input, drawing |
 | `src/gfx.c`, `src/font_data.h` | Framebuffer drawing and the font |
 | `src/sync.c` | Wi-Fi sync |
+| `src/aclock.c` | Audio clock: where the music is at the speaker, for Wi-Fi sync |
 | `src/update.c`, `src/net.c` | Self-update: GitHub's latest release, the download and unzip; HTTPS |
 | `src/main_trimui.c` | Device entry point (SDL2: video scaled 1.6x, buttons, sticks, USB audio) |
 | `src/midi.c` | USB MIDI clock in and out (ALSA raw MIDI) |
