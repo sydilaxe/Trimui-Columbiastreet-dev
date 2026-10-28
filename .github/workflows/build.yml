@@ -12,6 +12,11 @@ on:
         required: false
         default: ""
 
+# the release tag, when this run publishes one: a pushed v* tag, a release created on the
+# website, or a manual run with release_tag filled in (with or without the v)
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
+
 jobs:
   trimui:
     name: TrimUI packages (Brick / Brick Hammer, Brick Pro)
@@ -23,7 +28,16 @@ jobs:
           # generated files are committed; keep make from regenerating them
           touch src/font_data.h dist/ColumbiaStreet/icon.png
           pip install ziglang==0.14.1
-          make -j"$(nproc)" package
+          # a release is built as the tag's version (v0.3.1 -> 0.3.1), which the app compares
+          # with the latest release's tag to offer updates; otherwise CS_VERSION in src/engine.h
+          if [ -n "$RELEASE_TAG" ]; then
+            v=${RELEASE_TAG#v}
+            echo "$v" | grep -Eqx '[0-9]+(\.[0-9]+)*' || { echo "::error::release tag $RELEASE_TAG isn't v<number>.<number>..."; exit 1; }
+          else
+            v=$(make -s version)
+          fi
+          echo "building version $v"
+          make -j"$(nproc)" package VERSION="$v"
           for d in brick brickpro; do
             z=build/ColumbiaStreet-$d.zip
             ls -l $z
@@ -31,7 +45,7 @@ jobs:
             unzip -l $z | grep -q "Apps/ColumbiaStreet/breaks/AMEN_153bpm.wav"
             # the self-updater needs these: the CA bundle for HTTPS, and VERSION and DEVICE for install.sh
             unzip -l $z | grep -q "Apps/ColumbiaStreet/cacert.pem"
-            test "$(unzip -p $z Apps/ColumbiaStreet/VERSION)" = "$(make -s version)"
+            test "$(unzip -p $z Apps/ColumbiaStreet/VERSION)" = "$v"
             test "$(unzip -p $z Apps/ColumbiaStreet/DEVICE)" = $d
             file build/$d/columbia | grep -q "ARM aarch64"
           done
@@ -39,6 +53,9 @@ jobs:
           ! cmp -s build/brick/columbia build/brickpro/columbia
           strings build/brick/columbia | grep -qx "/ColumbiaStreet-brick.zip"
           strings build/brickpro/columbia | grep -qx "/ColumbiaStreet-brickpro.zip"
+          # the version the binaries were built as, which the updater compares with the release
+          strings build/brick/columbia | grep -qx "THIS IS V$v"
+          strings build/brickpro/columbia | grep -qx "THIS IS V$v"
       - uses: actions/upload-artifact@v4
         with:
           name: ColumbiaStreet-trimui
@@ -103,20 +120,22 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Check the tag matches CS_VERSION
-        env:
-          TAG: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
-        run: |
-          # the app compares the release tag with its own CS_VERSION; a mismatch would offer the update forever
-          v=$(sed -n 's/^#define CS_VERSION "\([^"]*\)".*/\1/p' src/engine.h)
-          [ "$TAG" = "v$v" ] || { echo "::error::tag $TAG doesn't match CS_VERSION $v in src/engine.h"; exit 1; }
       - uses: actions/download-artifact@v4
         with:
           name: ColumbiaStreet-trimui
+      - name: Check the packages are the tag's version
+        run: |
+          # the trimui job built them as the tag's version; a mismatch would make the app offer
+          # this update forever. A manual run's tag may leave out the v.
+          TAG=v${RELEASE_TAG#v}
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          for d in brick brickpro; do
+            test "$(unzip -p ColumbiaStreet-$d.zip Apps/ColumbiaStreet/VERSION)" = "${TAG#v}" ||
+              { echo "::error::ColumbiaStreet-$d.zip isn't version ${TAG#v}"; exit 1; }
+          done
       - name: Create the GitHub release with the TrimUI packages
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" ColumbiaStreet-brick.zip ColumbiaStreet-brickpro.zip --repo "$GITHUB_REPOSITORY" --clobber
