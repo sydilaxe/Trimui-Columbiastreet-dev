@@ -227,11 +227,12 @@ Both builds are aarch64 for glibc 2.28, for the Cortex-A53. They link against a 
 
 CI (`.github/workflows/build.yml`) builds both TrimUI packages with zig and runs the tests on
 every push.
-To publish a release, first set `CS_VERSION` in `src/engine.h` to the new version. The app
-compares it with the release tag to decide whether it's out of date, so the release job
-refuses a tag that doesn't match (`make version` prints it). Then push the tag (`git tag v0.3.0
-&& git push origin v0.3.0`), or run the workflow from the Actions tab with the tag in
-`release_tag`. Releases are full releases marked Latest, since the updater and `install.sh`
+To publish a release, push a tag (`git tag v0.3.1 && git push origin v0.3.1`), or run the
+workflow from the Actions tab with the tag in `release_tag` (`v0.3.1` or `0.3.1`). The version
+comes from the tag: CI builds the release with `make package VERSION=0.3.1`, which the app
+compares with the latest release's tag to tell whether it's out of date, so there's nothing to
+bump first. A tag must be `v` and dotted numbers. Plain builds use `CS_VERSION` in `src/engine.h`
+(`make version` prints the version a build gets). Releases are full releases marked Latest, since the updater and `install.sh`
 read GitHub's latest release, and that skips pre-releases. They have `ColumbiaStreet-brick.zip`
 and `ColumbiaStreet-brickpro.zip` attached and `.github/release-notes.md` as their notes. Running again for the same tag replaces
 the zips.

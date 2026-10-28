@@ -29,6 +29,7 @@ test` and keep its checks passing (CI greps for them in `.github/workflows/build
 
 The app updates itself from the latest GitHub release of this repo (`src/update.c`, HTTPS through
 Mbed TLS, fetched at a pinned release like the samples): each build fetches its own zip
-(`ColumbiaStreet-brick.zip` or `-brickpro.zip`). Before tagging a release, set `CS_VERSION` in
-`src/engine.h` to match the tag; CI refuses a mismatch. When you change the updater or the package
+(`ColumbiaStreet-brick.zip` or `-brickpro.zip`). Releases take their version from the tag (CI
+builds with `make VERSION=<tag without v>`, compiled in as `CS_VERSION`); `CS_VERSION` in
+`src/engine.h` is only the default for plain builds. When you change the updater or the package
 layout, run `make update-test`.

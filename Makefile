@@ -9,7 +9,8 @@
 #   make test     build the host harness and render screenshots + audio into build/test
 #   make install SD=/path/to/card [DEVICE=brickpro]   copy the app into SD/Apps/ColumbiaStreet
 #   make update-test   install a fake release over a test app folder, the way the app updates itself
-#   make version  print CS_VERSION (src/engine.h); releases are tagged v<version>
+#   make version  print the version built (CS_VERSION in src/engine.h, or VERSION=x.y.z);
+#                 releases are tagged v<version>, and CI builds them with VERSION from the tag
 #
 # zig: ZIG=/path/to/zig, or `pip install ziglang==0.14.1` (used as `python3 -m ziglang`)
 
@@ -26,14 +27,23 @@ PLATH  := src/midi.h src/net.h
 CFLAGS := -O2 -std=gnu11 -Wall -Wextra -fno-math-errno
 APP    := dist/ColumbiaStreet
 SAMPLES := $(APP)/breaks/AMEN_153bpm.wav
-VERSION := $(shell sed -n 's/^\#define CS_VERSION "\([^"]*\)".*/\1/p' src/engine.h)
+# the app's version: CS_VERSION in src/engine.h, or VERSION=x.y.z (CI passes the release tag's)
+VERSION ?= $(shell sed -n 's/^\#define CS_VERSION "\([^"]*\)".*/\1/p' src/engine.h)
+VERDEF := -DCS_VERSION='"$(VERSION)"'
+
 MAGICK := $(shell command -v magick 2>/dev/null || echo convert)
 
 all: build/brick/columbia build/brickpro/columbia $(APP)/icon.png $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt samples
 
+# changes only when the version does, so a new VERSION= rebuilds what has it compiled in
+build/version: FORCE
+	@mkdir -p build
+	@test "$$(cat $@ 2>/dev/null)" = "$(VERSION)" || echo $(VERSION) > $@
+FORCE:
+
 # read by install.sh to tell whether the device is up to date
-$(APP)/VERSION: src/engine.h
-	echo $(VERSION) > $@
+$(APP)/VERSION: build/version
+	cp $< $@
 
 samples: $(SAMPLES)
 $(SAMPLES): tools/fetch_samples.sh
@@ -78,28 +88,28 @@ build/zig/libmbedtls.a: $(MBED_SRC)
 build/host/libmbedtls.a: $(MBED_SRC)
 	$(MAKE) -f tools/mbedtls.mk OUT=build/host MBED_DIR=$(MBED_DIR) CC=cc AR=ar MBED_CFLAGS=-O2
 
-DEVICE_CC = $(ZIG) cc -target $(TARGET) -mcpu=$(CPU) $(CFLAGS) -I$(SDL_INC) -I$(MBED_DIR)/include -Isrc
+DEVICE_CC = $(ZIG) cc -target $(TARGET) -mcpu=$(CPU) $(CFLAGS) $(VERDEF) -I$(SDL_INC) -I$(MBED_DIR)/include -Isrc
 DEVICE_LINK = build/zig/libmbedtls.a build/sdl2/libSDL2-2.0.so.0 -lm -lpthread -Wl,--allow-shlib-undefined -s
 
-build/brick/columbia: $(SRC) $(NET) $(PLAT) $(HDR) $(PLATH) build/sdl2/libSDL2-2.0.so.0 build/zig/libmbedtls.a
+build/brick/columbia: $(SRC) $(NET) $(PLAT) $(HDR) $(PLATH) build/version build/sdl2/libSDL2-2.0.so.0 build/zig/libmbedtls.a
 	@mkdir -p build/brick
 	$(DEVICE_CC) -o $@ $(SRC) $(NET) $(PLAT) $(DEVICE_LINK)
 
-build/brickpro/columbia: $(SRC) $(NET) $(PLAT) $(HDR) $(PLATH) build/sdl2/libSDL2-2.0.so.0 build/zig/libmbedtls.a
+build/brickpro/columbia: $(SRC) $(NET) $(PLAT) $(HDR) $(PLATH) build/version build/sdl2/libSDL2-2.0.so.0 build/zig/libmbedtls.a
 	@mkdir -p build/brickpro
 	$(DEVICE_CC) -DCS_BRICKPRO -o $@ $(SRC) $(NET) $(PLAT) $(DEVICE_LINK)
 
-build/cs_test: $(SRC) src/midi.c src/main_test.c $(HDR) src/midi.h
+build/cs_test: $(SRC) src/midi.c src/main_test.c $(HDR) src/midi.h build/version
 	@mkdir -p build
-	cc $(CFLAGS) -o $@ $(SRC) src/midi.c src/main_test.c -lm -lpthread
+	cc $(CFLAGS) $(VERDEF) -o $@ $(SRC) src/midi.c src/main_test.c -lm -lpthread
 
 test: build/cs_test $(SAMPLES)
 	@mkdir -p build/test
 	build/cs_test build/test $(APP)
 	cd build/test && for f in *.ppm; do $(MAGICK) $$f $${f%.ppm}.png && rm $$f; done
 
-build/cs_update: $(NET) src/main_update.c src/engine.h src/net.h src/update.h build/host/libmbedtls.a
-	cc $(CFLAGS) -I$(MBED_DIR)/include -o $@ $(NET) src/main_update.c build/host/libmbedtls.a -lpthread
+build/cs_update: $(NET) src/main_update.c src/engine.h src/net.h src/update.h build/version build/host/libmbedtls.a
+	cc $(CFLAGS) $(VERDEF) -I$(MBED_DIR)/include -o $@ $(NET) src/main_update.c build/host/libmbedtls.a -lpthread
 
 update-test: build/cs_update
 	sh tools/update_test.sh
@@ -133,4 +143,4 @@ install: build/$(DEVICE)/columbia $(APP)/icon.png $(APP)/VERSION $(APP)/LICENSE-
 clean:
 	rm -rf build $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt
 
-.PHONY: all samples test update-test version package install clean
+.PHONY: FORCE all samples test update-test version package install clean
