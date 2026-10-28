@@ -18,8 +18,8 @@ TARGET := aarch64-linux-gnu.2.28
 CPU    := cortex_a53
 SDL_INC := third_party/SDL2-2.30.9-headers
 
-SRC    := src/engine.c src/breaks.c src/ui.c src/gfx.c src/sync.c
-HDR    := src/engine.h src/breaks.h src/ui.h src/gfx.h src/sync.h src/font_data.h src/update.h
+SRC    := src/engine.c src/breaks.c src/ui.c src/gfx.c src/sync.c src/aclock.c
+HDR    := src/engine.h src/breaks.h src/ui.h src/gfx.h src/sync.h src/aclock.h src/font_data.h src/update.h
 NET    := src/net.c src/update.c # the self-updater, on the device and in build/cs_update
 PLAT   := src/midi.c src/main_trimui.c
 PLATH  := src/midi.h src/net.h

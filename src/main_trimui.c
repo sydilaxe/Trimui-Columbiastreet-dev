@@ -20,6 +20,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "aclock.h"
 #include "breaks.h"
 #include "engine.h"
 #include "gfx.h"
@@ -80,7 +81,9 @@ static void unlock(void)
 static void audio_cb(void *ud, Uint8 *stream, int len)
 {
     (void)ud;
+    aclock_request(now_us(), len / 4);
     engine_render((int16_t *)stream, len / 4);
+    aclock_made(len / 4, engine_position(), engine_steps_per_frame());
 }
 
 static int is_usb_name(const char *n)
@@ -123,6 +126,10 @@ static int open_output_locked(const char *name, int start)
         SDL_CloseAudioDevice(dev);
         dev = 0;
     }
+    /* the driver holds about a buffer before it's heard; CS_SYNC_LATENCY
+     * (frames) lines this unit up with other apps by ear if needed. Each
+     * device starts the audio clock afresh. */
+    aclock_init(rate, env_int("CS_SYNC_LATENCY", bufsz));
     SDL_AudioSpec want, have;
     memset(&want, 0, sizeof want);
     want.freq = rate;
