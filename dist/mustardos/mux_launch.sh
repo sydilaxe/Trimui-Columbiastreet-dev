@@ -22,4 +22,6 @@ elif [ -f /opt/muos/script/var/func.sh ]; then
 fi
 
 cd "$APP_DIR" || exit 1
+# the screen can stay dark once the app's window opens: the app runs this then
+export CS_SCREEN_WAKE="$PWD/wake_screen.sh"
 ./launch.sh

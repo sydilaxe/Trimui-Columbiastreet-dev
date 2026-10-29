@@ -55,6 +55,7 @@ jobs:
             ls -l $z
             unzip -l $z | grep -q "Columbia Street/columbia$"
             unzip -l $z | grep -q "Columbia Street/mux_launch.sh$"
+            unzip -l $z | grep -q "Columbia Street/wake_screen.sh$"
             unzip -l $z | grep -q "Columbia Street/glyph/columbiastreet.svg$"
             unzip -l $z | grep -q "Columbia Street/breaks/AMEN_153bpm.wav"
             unzip -l $z | grep -q "Columbia Street/cacert.pem"

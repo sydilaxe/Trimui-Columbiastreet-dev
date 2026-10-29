@@ -138,7 +138,7 @@ build/ColumbiaStreet-%.zip: build/%/columbia $(APP)/icon.png $(APP)/VERSION $(AP
 # app knows to update from this package) and the list glyph.
 MUX := dist/mustardos
 MUX_APP := Columbia Street
-build/ColumbiaStreet-mustardos-%.muxapp: build/%/columbia $(APP)/icon.png $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt $(SAMPLES) $(MUX)/mux_launch.sh $(MUX)/glyph/columbiastreet.svg
+build/ColumbiaStreet-mustardos-%.muxapp: build/%/columbia $(APP)/icon.png $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt $(SAMPLES) $(MUX)/mux_launch.sh $(MUX)/wake_screen.sh $(MUX)/glyph/columbiastreet.svg
 	rm -rf build/mux-$* $@
 	mkdir -p "build/mux-$*/$(MUX_APP)"
 	cp -r $(APP)/. "build/mux-$*/$(MUX_APP)/"
@@ -146,7 +146,8 @@ build/ColumbiaStreet-mustardos-%.muxapp: build/%/columbia $(APP)/icon.png $(APP)
 	rm -f "build/mux-$*/$(MUX_APP)/"*.sav* "build/mux-$*/$(MUX_APP)/log.txt"
 	cp build/$*/columbia "build/mux-$*/$(MUX_APP)/"
 	echo $* > "build/mux-$*/$(MUX_APP)/DEVICE"
-	chmod +x "build/mux-$*/$(MUX_APP)/launch.sh" "build/mux-$*/$(MUX_APP)/mux_launch.sh" "build/mux-$*/$(MUX_APP)/columbia"
+	chmod +x "build/mux-$*/$(MUX_APP)/launch.sh" "build/mux-$*/$(MUX_APP)/mux_launch.sh" \
+		"build/mux-$*/$(MUX_APP)/wake_screen.sh" "build/mux-$*/$(MUX_APP)/columbia"
 	cd build/mux-$* && zip -qr ../ColumbiaStreet-mustardos-$*.muxapp "$(MUX_APP)"
 
 package: build/ColumbiaStreet-brick.zip build/ColumbiaStreet-brickpro.zip \
