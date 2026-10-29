@@ -11,7 +11,9 @@ channel, each sequenced by three Euclidean cells (HIT, ROLL, ALT).
 makes the updater fetch the Brick Pro's packages), and fetches the curated samples. `make package` zips
 both for TrimUI OS (`Apps/ColumbiaStreet`) and as MustardOS application archives
 (`ColumbiaStreet-mustardos-*.muxapp`: the same binaries in `Columbia Street/`, plus
-`dist/mustardos/mux_launch.sh` and the list glyph). `make test` renders screenshots and audio on the host into
+`dist/mustardos/mux_launch.sh`, `wake_screen.sh` (run through `CS_SCREEN_WAKE` once the window is
+up, as the screen can stay dark on MustardOS until a sleep and wake) and the list glyph). The
+samples load on a thread while the loading screen keeps being presented. `make test` renders screenshots and audio on the host into
 `build/test` and prints the engine checks. Without zig on the path, `pip install ziglang==0.14.1`.
 
 The platform layer is `src/main_trimui.c` (SDL2: video scaled 1.6x from the 640x480 pages, the

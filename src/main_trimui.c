@@ -18,6 +18,7 @@
 #include <strings.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -482,13 +483,62 @@ static SDL_Rect dst;
 static int rot;
 static uint32_t fb[SCREEN_W * SCREEN_H];
 
+/* CS_SCREEN_WAKE: a command to run once the window is on show. MustardOS's
+ * mux_launch.sh points it at wake_screen.sh: the screen can stay dark when an
+ * app opens its window there, until waking from sleep sets the display up
+ * again, so the script does what waking does. Run in the background (a double
+ * fork, so nothing is left to reap), never waited for. */
+#define SCREEN_WAKE_FRAME 10 /* about a third of a second of frames */
+static void screen_wake(void)
+{
+    const char *cmd = getenv("CS_SCREEN_WAKE");
+    if (!cmd || !*cmd)
+        return;
+    fprintf(stderr, "screen wake: %s\n", cmd);
+    fflush(stderr);
+    pid_t p = fork();
+    if (p == 0) {
+        if (fork() == 0) {
+            execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+            _exit(127);
+        }
+        _exit(0);
+    }
+    if (p > 0)
+        waitpid(p, NULL, 0);
+}
+
 static void present(void)
 {
+    static int frames;
     SDL_UpdateTexture(tex, NULL, fb, SCREEN_W * 4);
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
     SDL_RenderCopyEx(ren, tex, NULL, &dst, rot, NULL, SDL_FLIP_NONE);
     SDL_RenderPresent(ren);
+    if (++frames == SCREEN_WAKE_FRAME)
+        screen_wake();
+}
+
+/* The samples load on their own thread while the main one keeps the loading
+ * screen on show: a frame drawn once can be lost on its way to the screen
+ * (the first after a window opens often is), and the load takes seconds on
+ * the A53s. Nothing else runs yet, so the loader has the engine to itself. */
+typedef struct {
+    volatile int stage; /* 0 breaks, 1 basses, 2 done */
+    int nb, ns;
+} Loader;
+
+static void *load_samples(void *arg)
+{
+    Loader *ld = arg;
+    ld->nb = breaks_load_dir(BREAK_DIR);
+    __sync_synchronize();
+    ld->stage = 1;
+    ld->ns = bass_load_dir(BASS_DIR);
+    __sync_synchronize();
+    ld->stage = 2;
+    return NULL;
 }
 
 /* ------------------------------------------------------------- update */
@@ -521,6 +571,7 @@ int main(int argc, char **argv)
     srand((unsigned)time(NULL));
     signal(SIGTERM, on_signal);
     signal(SIGINT, on_signal);
+    uint64_t t_start = now_us();
     fprintf(stderr, "columbia street v%s for %s\n", CS_VERSION, DEVICE_NAME);
 
     rate = env_int("CS_RATE", 48000);
@@ -568,12 +619,30 @@ int main(int argc, char **argv)
     dst.w = (int)(SCREEN_W * scale + 0.5f), dst.h = (int)(SCREEN_H * scale + 0.5f);
     dst.x = (sw - dst.w) / 2, dst.y = (sh - dst.h) / 2;
 
-    ui_draw_loading(fb, "LOADING BREAKS...");
-    present();
-
+    uint64_t t_window = now_us();
     engine_init(rate);
-    int nb = breaks_load_dir(BREAK_DIR);
-    int ns = bass_load_dir(BASS_DIR);
+    Loader ld = {0};
+    pthread_t loader;
+    if (pthread_create(&loader, NULL, load_samples, &ld) == 0) {
+        while (ld.stage < 2) {
+            SDL_Event e;
+            while (SDL_PollEvent(&e)) /* controllers are opened after: only a quit counts now */
+                if (e.type == SDL_QUIT)
+                    got_signal = 1;
+            ui_draw_loading(fb, ld.stage ? "LOADING BASSES..." : "LOADING BREAKS...");
+            present();
+            SDL_Delay(30);
+        }
+        pthread_join(loader, NULL);
+    }
+    else {
+        ui_draw_loading(fb, "LOADING...");
+        present();
+        load_samples(&ld);
+    }
+    int nb = ld.nb, ns = ld.ns;
+    fprintf(stderr, "startup: window after %.2f s, samples loaded in %.2f s\n", (t_window - t_start) / 1e6,
+            (now_us() - t_window) / 1e6);
     if (!nbanks) {
         breaks_fallback();
         fprintf(stderr, "no breaks in %s/: using the fallback kit\n", BREAK_DIR);
@@ -612,6 +681,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "updates from %s\n", update_asset());
     }
     fprintf(stderr, "update check %s\n", update_auto ? "on" : "off");
+    fprintf(stderr, "startup: running after %.2f s\n", (now_us() - t_start) / 1e6);
     Uint32 last = SDL_GetTicks(), last_save = last, update_next = last + 5000, relaunch_at = 0, next_draw = last;
     while (!ui_quit_requested() && !got_signal) {
         SDL_Event e;

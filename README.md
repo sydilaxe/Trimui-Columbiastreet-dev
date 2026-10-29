@@ -52,6 +52,11 @@ By hand instead: unzip the `.muxapp` (it is a zip) and copy its `Columbia Street
 The app reads MustardOS's own controller, so the buttons are as labelled whatever A/B layout
 MustardOS is set to. `log.txt` in the app folder names the controller it found.
 
+On the Brick Pro the screen could stay dark after the app opened (it played, but nothing showed
+until the power button slept and woke the device). Once its window is up, the app now runs
+`wake_screen.sh`, which does what MustardOS does on waking: the framebuffer blanked and unblanked,
+and the saved brightness applied again. `CS_SCREEN_WAKE=` (empty) in `mux_launch.sh` turns it off.
+
 The state autosaves to `columbia.sav` in the app folder. A song saved on the Miyoo, or under the
 other firmware, loads as it is: copy its `columbia.sav` into the folder.
 
