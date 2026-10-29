@@ -19,7 +19,7 @@ env:
 
 jobs:
   trimui:
-    name: TrimUI packages (Brick / Brick Hammer, Brick Pro)
+    name: TrimUI packages (Brick / Brick Hammer, Brick Pro; TrimUI OS and MustardOS)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,10 +49,33 @@ jobs:
             test "$(unzip -p $z Apps/ColumbiaStreet/DEVICE)" = $d
             file build/$d/columbia | grep -q "ARM aarch64"
           done
-          # the two builds differ by the Brick Pro's sticks (and the zip each updates from)
-          ! cmp -s build/brick/columbia build/brickpro/columbia
+          # MustardOS: the same binaries in "Columbia Street/", with mux_launch.sh and the list glyph
+          for d in brick brickpro; do
+            z=build/ColumbiaStreet-mustardos-$d.muxapp
+            ls -l $z
+            unzip -l $z | grep -q "Columbia Street/columbia$"
+            unzip -l $z | grep -q "Columbia Street/mux_launch.sh$"
+            unzip -l $z | grep -q "Columbia Street/glyph/columbiastreet.svg$"
+            unzip -l $z | grep -q "Columbia Street/breaks/AMEN_153bpm.wav"
+            unzip -l $z | grep -q "Columbia Street/cacert.pem"
+            test "$(unzip -p $z "Columbia Street/VERSION")" = "$v"
+            test "$(unzip -p $z "Columbia Street/DEVICE")" = $d
+            unzip -p $z "Columbia Street/columbia" | cmp -s - build/$d/columbia
+            # MustardOS's Archive Manager refuses absolute and .. paths, and anything not a file or folder
+            # (a bare "! cmd" can't fail a step under set -e, hence the ifs)
+            if unzip -Z1 $z | grep -Eq '^/|(^|/)\.\.(/|$)|\\'; then echo "::error::$z has unsafe paths"; exit 1; fi
+            if unzip -Zl $z | grep -Eq '^[bclps]'; then echo "::error::$z has links or devices"; exit 1; fi
+            # the TrimUI OS zip must not carry mux_launch.sh: it is how the app tells the packages apart
+            if unzip -l build/ColumbiaStreet-$d.zip | grep -q mux_launch.sh; then
+              echo "::error::ColumbiaStreet-$d.zip has mux_launch.sh"; exit 1
+            fi
+          done
+          # the two builds differ by the Brick Pro's sticks (and the packages each updates from)
+          if cmp -s build/brick/columbia build/brickpro/columbia; then echo "::error::the two builds are the same"; exit 1; fi
           strings build/brick/columbia | grep -qx "/ColumbiaStreet-brick.zip"
           strings build/brickpro/columbia | grep -qx "/ColumbiaStreet-brickpro.zip"
+          strings build/brick/columbia | grep -qx "/ColumbiaStreet-mustardos-brick.muxapp"
+          strings build/brickpro/columbia | grep -qx "/ColumbiaStreet-mustardos-brickpro.muxapp"
           # the version the binaries were built as, which the updater compares with the release
           strings build/brick/columbia | grep -qx "THIS IS V$v"
           strings build/brickpro/columbia | grep -qx "THIS IS V$v"
@@ -62,6 +85,8 @@ jobs:
           path: |
             build/ColumbiaStreet-brick.zip
             build/ColumbiaStreet-brickpro.zip
+            build/ColumbiaStreet-mustardos-brick.muxapp
+            build/ColumbiaStreet-mustardos-brickpro.muxapp
 
   test:
     name: Engine and UI tests (host)
@@ -132,15 +157,18 @@ jobs:
           for d in brick brickpro; do
             test "$(unzip -p ColumbiaStreet-$d.zip Apps/ColumbiaStreet/VERSION)" = "${TAG#v}" ||
               { echo "::error::ColumbiaStreet-$d.zip isn't version ${TAG#v}"; exit 1; }
+            test "$(unzip -p ColumbiaStreet-mustardos-$d.muxapp "Columbia Street/VERSION")" = "${TAG#v}" ||
+              { echo "::error::ColumbiaStreet-mustardos-$d.muxapp isn't version ${TAG#v}"; exit 1; }
           done
-      - name: Create the GitHub release with the TrimUI packages
+      - name: Create the GitHub release with the TrimUI OS and MustardOS packages
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          files="ColumbiaStreet-brick.zip ColumbiaStreet-brickpro.zip ColumbiaStreet-mustardos-brick.muxapp ColumbiaStreet-mustardos-brickpro.muxapp"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" ColumbiaStreet-brick.zip ColumbiaStreet-brickpro.zip --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$TAG" $files --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" ColumbiaStreet-brick.zip ColumbiaStreet-brickpro.zip \
+            gh release create "$TAG" $files \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Columbia Street $TAG" \
