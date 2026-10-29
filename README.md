@@ -1,7 +1,7 @@
 # Columbia Street
 
-A five-channel jungle sequencer for the TrimUI Brick, Brick Hammer and Brick Pro running TrimUI OS,
-ported from the [Miyoo Mini Plus version](https://github.com/sydilaxe/Miyoo-ColumbiaStreet-dev).
+A five-channel jungle sequencer for the TrimUI Brick, Brick Hammer and Brick Pro running TrimUI OS
+or [MustardOS](https://muos.dev), ported from the [Miyoo Mini Plus version](https://github.com/sydilaxe/Miyoo-ColumbiaStreet-dev).
 
 Four break channels play slices of sampled drum breaks: the Amen and other loops, chopped at their
 hits. The fifth channel is a bass: a sub, a Reese, an 808, an FM growl, or one of 20 jungle bass
@@ -21,8 +21,14 @@ over USB.
 
 ## Install
 
-There are two builds: `ColumbiaStreet-brick.zip` for the **Brick** and **Brick Hammer**, and
-`ColumbiaStreet-brickpro.zip` for the **Brick Pro** (it adds the analog sticks).
+Each release has a package for each device and firmware. The Brick Pro's adds the analog sticks.
+
+| | TrimUI OS | MustardOS |
+| --- | --- | --- |
+| **Brick**, **Brick Hammer** | `ColumbiaStreet-brick.zip` | `ColumbiaStreet-mustardos-brick.muxapp` |
+| **Brick Pro** | `ColumbiaStreet-brickpro.zip` | `ColumbiaStreet-mustardos-brickpro.muxapp` |
+
+### TrimUI OS
 
 1. Download the zip for your device from the latest [release](../../releases), or from the
    artifacts of the latest run on the Actions tab, or build it (see below).
@@ -31,12 +37,28 @@ There are two builds: `ColumbiaStreet-brick.zip` for the **Brick** and **Brick H
    Brick Pro).
 3. Launch **Columbia Street** from Apps. Press MENU to quit.
 
-The state autosaves to `columbia.sav` in the app folder. A song saved on the Miyoo loads as it is:
-copy its `columbia.sav` into the folder.
+### MustardOS
+
+1. Download the `.muxapp` for your device from the latest [release](../../releases).
+2. Copy it into the `ARCHIVE` folder at the root of the first SD card (SD1).
+3. On the device, open **Applications → Archive Manager** and install it. It lands in
+   `MUOS/application/Columbia Street` (on SD2 if you have one, else SD1).
+4. Launch **Columbia Street** from **Applications**. Press MENU to quit.
+
+By hand instead: unzip the `.muxapp` (it is a zip) and copy its `Columbia Street` folder into
+`MUOS/application/` on the card. `make install SD=/path/to/card OS=mustardos` (add
+`DEVICE=brickpro` for the Brick Pro) does the same from a build.
+
+The app reads MustardOS's own controller, so the buttons are as labelled whatever A/B layout
+MustardOS is set to. `log.txt` in the app folder names the controller it found.
+
+The state autosaves to `columbia.sav` in the app folder. A song saved on the Miyoo, or under the
+other firmware, loads as it is: copy its `columbia.sav` into the folder.
 
 ### Over Wi-Fi
 
-With the TrimUI's SSH server on, run this on a computer on the same network:
+With the TrimUI's SSH server on (on MustardOS, Secure Shell under Web Services),
+run this on a computer on the same network:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/main/install.sh | bash
@@ -44,8 +66,9 @@ curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/
 
 The script scans the local /24 for an SSH server (a handheld's dropbear first), checks the
 installed version against the latest release, and if the release is newer copies it to
-`SD:/Apps/ColumbiaStreet`. Your song (`columbia.sav`) and any breaks or basses you added are kept.
-It logs in as `root` (`CS_USER` changes it). The first time, it installs the Brick build; set
+`SD:/Apps/ColumbiaStreet`, or on MustardOS to its application folder. Your song (`columbia.sav`) and any breaks or basses you added are kept.
+It logs in as `root` (`CS_USER` changes it). It tells TrimUI OS and MustardOS apart by itself, and
+MustardOS says which device it is. On TrimUI OS, the first time, it installs the Brick build; set
 `CS_DEVICE=brickpro` for the Brick Pro's. After that the installed copy says which build it is.
 The address that worked is saved in `~/.config/columbiastreet/host`; `CS_HOST=192.168.1.28` skips
 the scan. `CS_FORCE=1` reinstalls even when the version matches. Quit Columbia Street on the
@@ -55,8 +78,8 @@ TrimUI before updating.
 
 Columbia Street keeps itself up to date. Five seconds after it starts, it asks GitHub for the
 latest release, retrying each minute (up to five times) while Wi-Fi comes up. When there's a
-newer one it asks **A: update and restart / B: not now**. A downloads the release's zip for this
-device (about 5 MB) while the music keeps playing. It checks every file, swaps in the ones that
+newer one it asks **A: update and restart / B: not now**. A downloads the release's package for
+this device and firmware (about 5 MB) while the music keeps playing. It checks every file, swaps in the ones that
 changed and starts the new version. Your song and your own breaks stay as they are. If anything
 goes wrong on the way, nothing is changed. B asks again next time you open the app.
 `CS_UPDATE=0` in `launch.sh` turns the check off. An update replaces `launch.sh`, so set any of
@@ -178,7 +201,8 @@ The sound is made in 512-frame buffers at 48 kHz (about 11 ms, half the Miyoo's 
 memory locked so it never waits for a page to be read back in; the screen runs below it at 30
 frames a second, and the buttons are read every few milliseconds. If you hear crackles, set
 `CS_BUFFER=1024`. `CS_RATE=44100` does a little less work. `CS_ROTATE=180` turns the picture and
-`CS_JOYMAP=A=1,B=0,...` renumbers the buttons, for a firmware that differs.
+`CS_JOYMAP=A=1,B=0,...` renumbers the buttons (also `L2`, `R2`, `L3`, `R3`), for a firmware that
+differs. `log.txt` lists the controllers found and any button the app doesn't use.
 
 ## Wi-Fi sync
 
@@ -213,15 +237,21 @@ ImageMagick.
 
 ```sh
 make              # cross-compile build/brick/columbia and build/brickpro/columbia, fetch the samples
-make package      # build/ColumbiaStreet-brick.zip and build/ColumbiaStreet-brickpro.zip, as CI does
+make package      # the TrimUI OS zips and the MustardOS .muxapps, as CI does
 make test         # host harness: screenshots, audio and engine checks into build/test
 make update-test  # the self-update end to end, against tools/fake_github.py
-make install SD=/path/to/mounted/sdcard [DEVICE=brickpro]
+make install SD=/path/to/mounted/sdcard [DEVICE=brickpro] [OS=mustardos]
 ```
 
 Both builds are aarch64 for glibc 2.28, for the Cortex-A53. They link against a stand-in
 `libSDL2-2.0.so.0` made by `tools/mksdlstub.py`; the device's own SDL2 is used at run time.
-`-DCS_BRICKPRO` adds the sticks and makes the updater fetch the Brick Pro's zip.
+`-DCS_BRICKPRO` adds the sticks and makes the updater fetch the Brick Pro's packages.
+
+The same binaries go into both firmwares' packages. At run time the app reads MustardOS's
+"muOS-Keys" controller when it is there (its numbering is MustardOS's own, from its
+`device/tui-brick*` controller maps) and TrimUI OS's controller otherwise. It updates from the
+MustardOS package when its folder has `mux_launch.sh` (`dist/mustardos/`), which only that
+package carries.
 
 ### Releases
 
@@ -233,9 +263,10 @@ comes from the tag: CI builds the release with `make package VERSION=0.3.1`, whi
 compares with the latest release's tag to tell whether it's out of date, so there's nothing to
 bump first. A tag must be `v` and dotted numbers. Plain builds use `CS_VERSION` in `src/engine.h`
 (`make version` prints the version a build gets). Releases are full releases marked Latest, since the updater and `install.sh`
-read GitHub's latest release, and that skips pre-releases. They have `ColumbiaStreet-brick.zip`
-and `ColumbiaStreet-brickpro.zip` attached and `.github/release-notes.md` as their notes. Running again for the same tag replaces
-the zips.
+read GitHub's latest release, and that skips pre-releases. They have `ColumbiaStreet-brick.zip`,
+`ColumbiaStreet-brickpro.zip`, `ColumbiaStreet-mustardos-brick.muxapp` and
+`ColumbiaStreet-mustardos-brickpro.muxapp` attached and `.github/release-notes.md` as their notes. Running again for the same tag replaces
+the packages.
 
 `build/cs_update APP_DIR [--force]` (built by `make update-test`) checks for a newer release
 and installs it into `APP_DIR`, the way the app does. Point `CS_UPDATE_API` at
