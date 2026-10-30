@@ -526,6 +526,11 @@ static void screen_wake(void)
 static void present(void)
 {
     static int frames;
+    /* opaque: the page is drawn with the alpha byte left at 0, and SDL copies
+     * it to the screen as it is. MustardOS's display shows the screen's
+     * alpha, so a picture with alpha 0 is black there (TrimUI OS ignores it). */
+    for (int i = 0; i < SCREEN_W * SCREEN_H; i++)
+        fb[i] |= 0xff000000u;
     SDL_UpdateTexture(tex, NULL, fb, SCREEN_W * 4);
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
@@ -615,6 +620,8 @@ int main(int argc, char **argv)
         ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     tex = ren ? SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H)
               : NULL;
+    if (tex) /* copied as it is, alpha and all (the pixels are opaque) */
+        SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_NONE);
     if (!tex) {
         fprintf(stderr, "video: %s\n", SDL_GetError());
         SDL_Quit();
