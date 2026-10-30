@@ -148,13 +148,26 @@ F2's own LEDs light while their scene is on. The scenes are saved with the song.
 
 ### LEDs
 
-On the Brick and Brick Pro, Columbia Street plays the LEDs along:
+On the Brick, Columbia Street plays the LEDs along:
 
 - **F1 and F2** light red while their mute scene is on.
 - **The top bar** keeps the tempo: a flash on each beat that fades through it, orange on the
   first beat of the bar. It is dark while stopped.
-- **The analog sticks' LEDs** on the Brick Pro (the triggers' on the Brick) follow the sound: as
-  bright as the output is loud, in the colour of the loudest channel, red when it clips.
+- **The triggers' LEDs** follow the sound: as bright as the output is loud, in the colour of the
+  loudest channel, red when it clips.
+
+On the Brick Pro each LED is set on its own:
+
+- **F1 and F2** light red while their mute scene is on.
+- **The top bar** is a stereo level meter: from the centre out, the left channel to the left and
+  the right to the right, green rising to amber and red near full scale.
+- **The L1, L2, R1 and R2 LEDs** keep the tempo, as the top bar does on the Brick.
+- **The left stick's ring** points where the stick is pushed (the filter sweep), its corners
+  brighter the further it goes; **the right stick's ring** the same, in the colour of the effect
+  that way: orange for repeat 1/8 (up), yellow for repeat 1/16 (right), violet for reverse (left),
+  red for tape stop (down).
+
+`CS_LED_FRAME=0` drives the Brick Pro's LEDs as on the Brick instead.
 
 Your own LED settings are put back when you quit. `CS_LEDS=0` in `launch.sh` leaves the LEDs alone.
 

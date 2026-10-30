@@ -774,6 +774,90 @@ int main(int argc, char **argv)
                started, lit, level, lr, restored);
     }
 
+    /* ---- the Brick Pro, LED by LED (frame_hex): F1 lit with M1 on, the top bar's left half lit by a full-scale
+     * left channel (the right silent), the shoulders the beat, the left ring's upper corners with the left stick
+     * up, the right ring's right corners in REPEAT 1/16's colour with the right stick right; given back at the end */
+    {
+        char ld[600], fp[700];
+        snprintf(ld, sizeof ld, "%s/led_frame", out);
+        mkdir(ld, 0755);
+        static const char *const files[] = {"effect_rgb_hex_f1", "effect_rgb_hex_f2", "effect_rgb_hex_m",
+                                            "effect_rgb_hex_lr", "effect_f1", "effect_f2", "effect_m", "effect_lr",
+                                            "max_scale", "max_scale_lr", "max_scale_f1f2", "effect_enable", "frame_hex"};
+        static const char *const before[] = {"123456", "123456", "123456", "123456", "2", "2", "2", "2",
+                                             "10", "10", "10", "1", "000000"};
+        for (int i = 0; i < 13; i++) {
+            snprintf(fp, sizeof fp, "%s/%s", ld, files[i]);
+            FILE *f = fopen(fp, "w");
+            fprintf(f, "%s\n", before[i]);
+            fclose(f);
+        }
+        setenv("CS_LED_DIR", ld, 1);
+        setenv("CS_LED_FRAME", "1", 1);
+        int started = leds_start();
+        song_default();
+        live.playing = 1;
+        live.step = 0;
+        static short pk[256 * 2];
+        for (int i = 0; i < 256; i++)
+            pk[i * 2] = 32000, pk[i * 2 + 1] = 0;
+        leds_audio(pk, 256);
+        leds_sticks(0.f, 1.f, 1.f, 0.f);
+        leds_update(0);
+        usleep(80000); /* the LED thread writes it */
+        char frame[400] = "", en[16] = "";
+        snprintf(fp, sizeof fp, "%s/frame_hex", ld);
+        FILE *f = fopen(fp, "r");
+        if (f) {
+            if (!fgets(frame, sizeof frame, f))
+                frame[0] = 0;
+            fclose(f);
+        }
+        snprintf(fp, sizeof fp, "%s/effect_enable", ld);
+        if ((f = fopen(fp, "r"))) {
+            if (!fgets(en, sizeof en, f))
+                en[0] = 0;
+            fclose(f);
+        }
+        unsigned v[23] = {0};
+        int n = 0;
+        for (char *q = frame; n < 23 && sscanf(q, "%6x", &v[n]) == 1; q += 7)
+            n++;
+        int ok = started && n == 23 && en[0] == '0' && v[9] == 0xff2030 && !v[8]; /* F1 lit, F2 dark */
+        for (int k = 0; k < 4; k++)
+            ok &= v[k] != 0 && v[4 + k] == 0 && v[18 + k] != 0; /* the bar's left half, the shoulders */
+        ok &= v[10] && !v[11] && !v[12] && v[13];                 /* the left ring: upper corners */
+        ok &= !v[14] && !v[15] && v[16] == 0xffb428 && v[17] == 0xffb428; /* the right ring: right corners */
+        ok &= !v[22];
+        leds_stop();
+        live.playing = 0;
+        unsetenv("CS_LED_FRAME");
+        unsetenv("CS_LED_DIR");
+        leds_sticks(0.f, 0.f, 0.f, 0.f);
+        snprintf(fp, sizeof fp, "%s/frame_hex", ld);
+        if ((f = fopen(fp, "r"))) {
+            if (!fgets(frame, sizeof frame, f))
+                frame[0] = 0;
+            fclose(f);
+        }
+        snprintf(fp, sizeof fp, "%s/effect_enable", ld);
+        if ((f = fopen(fp, "r"))) {
+            if (!fgets(en, sizeof en, f))
+                en[0] = 0;
+            fclose(f);
+        }
+        char f1[16] = "";
+        snprintf(fp, sizeof fp, "%s/effect_rgb_hex_f1", ld);
+        if ((f = fopen(fp, "r"))) {
+            if (fscanf(f, "%15s", f1) != 1)
+                f1[0] = 0;
+            fclose(f);
+        }
+        int back = !strncmp(frame, "000000 000000", 13) && en[0] == '1' && !strcmp(f1, "123456");
+        printf("leds frame: F1, the level on the bar, the beat on the shoulders, each ring its stick: %d; given back "
+               "(dark frame, effects on, colours as found): %d\n", ok, back);
+    }
+
     /* ---- sync: a leader's packet sets our tempo */
     {
         song_default();

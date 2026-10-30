@@ -90,6 +90,7 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
     engine_render((int16_t *)stream, len / 4);
     aclock_made(len / 4, engine_position(), engine_steps_per_frame());
     perf_audio_output((const int16_t *)stream, len / 4); /* JUMP: a click made here */
+    leds_audio((const short *)stream, len / 4);          /* the top bar's level meter (Brick Pro) */
     perf_audio_end(t0);
 }
 
@@ -405,6 +406,7 @@ static void sticks_apply(void)
         stick_fx_now = fx;
         ui_stick_fx(fx);
     }
+    leds_sticks(lx, -ly, rx, -ry); /* the rings point where the sticks do (up is negative from SDL) */
 }
 #endif
 
@@ -774,8 +776,14 @@ int main(int argc, char **argv)
         fprintf(stderr, "could not lower the screen's priority\n");
 
     ui_init();
+#ifdef CS_BRICKPRO
+    fprintf(stderr, "leds: %s\n", leds_start() ? "F1/F2 show the mute scenes, the top bar the level, the shoulders the beat, "
+                                                 "each ring its stick (CS_LED_FRAME=0: the named zones)"
+                                                : "not driven (no led_anim, or CS_LEDS=0)");
+#else
     fprintf(stderr, "leds: %s\n", leds_start() ? "F1/F2 show the mute scenes, the top bar the beat, lr the level"
                                                 : "not driven (no led_anim, or CS_LEDS=0)");
+#endif
     sync_init();
     /* the clock out leaves as the sound is heard, the device's buffer behind the engine */
     midi_set_latency((float)bufsz / rate);
