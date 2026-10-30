@@ -119,6 +119,10 @@ jobs:
           grep -q "^sync timing: .*(want under 1 and 2: 1)" $r
           grep -q "^sync timing, a leader without echo: .*(want under 6: 1)" $r
           grep -q "^save compat v0.1: 1, bpm 151, output 0, ppqn 2, pulse 5" $r
+          grep -q "^save compat v0.3: 1, bpm 147, scenes 0" $r
+          # the mute scenes (F1 / F2, R2 + L1 / R1) and the LEDs (into a stand-in for the driver)
+          grep -q "^scenes: saved 1, empty does nothing 1, on 1, off 1, R2+L1 1, swap 1, back 1, kept 1" $r
+          grep -q "^leds: driven 1, F1 lit, F2 dark, bar orange 1, level in the loudest channel's colour 1 (.*), restored 1" $r
           grep -q "^clock out: 2 PPQN at 120 BPM on the right -> 16 pulses in 4 s, mean gap 250.00 ms, width 5.00 ms, other values 0" $r
           grep -q "^clock out: 24 PPQN at 120 BPM on the right -> 192 pulses in 4 s, mean gap 20.83 ms, width 5.00 ms, other values 0" $r
           grep -q "^clock out: 2 PPQN at 120 BPM on the left -> 16 pulses .* other values 0" $r

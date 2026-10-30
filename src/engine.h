@@ -64,6 +64,8 @@ typedef struct {
     int min, max, def;
 } ParamDef;
 
+#define NSCENE 2 /* mute scenes M1, M2 */
+
 /* one pattern: what the slots A..H store and recall */
 typedef struct {
     Cell cell[NV][NROW];
@@ -84,6 +86,9 @@ typedef struct {
     uint8_t slot_used[NSLOT];
     /* v0.2: new fields go at the end, so an older save still loads */
     int out_mode, clk_side, clk_ppqn, clk_width;
+    /* v0.4: two mute scenes, the mixer's mutes and solos saved to switch on
+     * and off in one press (F1 / F2 on the TrimUI, R2 + L1 / R1 anywhere) */
+    uint8_t scene_mute[NSCENE][NV], scene_solo[NSCENE][NV], scene_used[NSCENE];
 } Song;
 
 /* Shared between UI and audio thread. The UI writes these only while

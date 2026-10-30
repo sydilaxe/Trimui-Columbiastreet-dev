@@ -26,6 +26,7 @@
 #include "breaks.h"
 #include "engine.h"
 #include "gfx.h"
+#include "leds.h"
 #include "midi.h"
 #include "net.h"
 #include "sync.h"
@@ -181,19 +182,31 @@ static void audio_hotplug(void)
  *   MustardOS: its "muOS-Keys" controller, numbered as in MustardOS's own
  *     controller maps (device/tui-brick*), which differ between the Brick and
  *     the Brick Pro. L2 and R2 are buttons; the Brick Pro's sticks are axes
- *     0, 1 and 2, 3. */
+ *     0, 1 and 2, 3.
+ * F1 and F2 (the function buttons on the front, mute scenes M1 and M2): on
+ * the Brick they are the buttons TrimUI OS and MustardOS call L3 and R3 (it
+ * has no sticks to click); on the Brick Pro, TrimUI OS's 11 and 12 (NextUI's
+ * L4 and R4), while 9 and 10 are the sticks' clicks. MustardOS's Brick Pro map
+ * has no number for them; CS_JOYMAP=F1=n,F2=n sets one (log.txt names the
+ * buttons it doesn't know). */
 enum { PAD_TRIMUI, PAD_MUOS_BRICK, PAD_MUOS_BRICKPRO, PAD_KINDS };
 static const char *const pad_names[PAD_KINDS] = {"TrimUI OS", "MustardOS (Brick)", "MustardOS (Brick Pro)"};
 
-/* each pad's button numbers, in the order of the BTN_ enum, then L3 and R3 */
+/* each pad's button numbers, in the order of the BTN_ enum (ending F1, F2), then L3 and R3 */
 #define JB_L3 BTN_COUNT
 #define JB_R3 (BTN_COUNT + 1)
 #define JB_COUNT (BTN_COUNT + 2)
 static const signed char pad_buttons[PAD_KINDS][JB_COUNT] = {
-    /*                     UP  DN  LT  RT  A  B  X  Y  L1  R1  L2  R2  SEL STA MENU L3  R3 */
-    [PAD_TRIMUI]        = {-1, -1, -1, -1, 1, 0, 3, 2, 4,  5,  -1, -1, 6,  7,  8,   9,  10},
-    [PAD_MUOS_BRICK]    = {-1, -1, -1, -1, 5, 4, 6, 7, 8,  9,  10, 11, 12, 13, 14,  15, 16},
-    [PAD_MUOS_BRICKPRO] = {-1, -1, -1, -1, 6, 5, 7, 8, 9,  10, 11, 12, 13, 14, 15,  16, 17},
+#ifdef CS_BRICKPRO
+    /*                     UP  DN  LT  RT  A  B  X  Y  L1  R1  L2  R2  SEL STA MENU F1  F2  L3  R3 */
+    [PAD_TRIMUI]        = {-1, -1, -1, -1, 1, 0, 3, 2, 4,  5,  -1, -1, 6,  7,  8,   11, 12, 9,  10},
+    [PAD_MUOS_BRICK]    = {-1, -1, -1, -1, 5, 4, 6, 7, 8,  9,  10, 11, 12, 13, 14,  15, 16, -1, -1},
+    [PAD_MUOS_BRICKPRO] = {-1, -1, -1, -1, 6, 5, 7, 8, 9,  10, 11, 12, 13, 14, 15,  -1, -1, 16, 17},
+#else
+    [PAD_TRIMUI]        = {-1, -1, -1, -1, 1, 0, 3, 2, 4,  5,  -1, -1, 6,  7,  8,   9,  10, -1, -1},
+    [PAD_MUOS_BRICK]    = {-1, -1, -1, -1, 5, 4, 6, 7, 8,  9,  10, 11, 12, 13, 14,  15, 16, -1, -1},
+    [PAD_MUOS_BRICKPRO] = {-1, -1, -1, -1, 6, 5, 7, 8, 9,  10, 11, 12, 13, 14, 15,  -1, -1, 16, 17},
+#endif
 };
 
 /* what each pad's axes do */
@@ -219,8 +232,8 @@ static void joy_map_default(void)
     }
     /* CS_JOYMAP=A=1,B=0,...: another firmware's numbering (for every pad) */
     const char *m = getenv("CS_JOYMAP");
-    static const char *const names[JB_COUNT] = {"UP", "DOWN", "LEFT", "RIGHT", "A",      "B",     "X",    "Y", "L1",
-                                                "R1", "L2",   "R2",   "SELECT", "START", "MENU", "L3", "R3"};
+    static const char *const names[JB_COUNT] = {"UP", "DOWN", "LEFT",  "RIGHT", "A",    "B",  "X",  "Y",  "L1",  "R1",
+                                                "L2", "R2",   "SELECT", "START", "MENU", "F1", "F2", "L3", "R3"};
     while (m && *m) {
         char key[16];
         int num;
@@ -312,6 +325,8 @@ static int map_key(SDL_Keycode k)
     case SDLK_RCTRL: return BTN_SELECT;
     case SDLK_RETURN: return BTN_START;
     case SDLK_ESCAPE: return BTN_MENU;
+    case SDLK_F1: return BTN_F1;
+    case SDLK_F2: return BTN_F2;
     default: return -1;
     }
 }
@@ -668,6 +683,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "could not lower the screen's priority\n");
 
     ui_init();
+    fprintf(stderr, "leds: %s\n", leds_start() ? "F1/F2 show the mute scenes, the top bar the beat, lr the level"
+                                                : "not driven (no led_anim, or CS_LEDS=0)");
     sync_init();
     /* the clock out leaves as the sound is heard, the device's buffer behind the engine */
     midi_set_latency((float)bufsz / rate);
@@ -708,6 +725,7 @@ int main(int argc, char **argv)
         if (relaunch_at && (Sint32)(now - relaunch_at) >= 0)
             break;
         ui_draw(fb);
+        leds_update(ui_scene_on());
         present();
 
         if (now - last_save > 15000) {
@@ -721,6 +739,7 @@ int main(int argc, char **argv)
     }
 
     song_save(SAVE_PATH);
+    leds_stop();
     midi_stop();
     sync_close();
     if (dev)
