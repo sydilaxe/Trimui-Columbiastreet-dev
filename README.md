@@ -242,6 +242,23 @@ frames a second, and the buttons are read every few milliseconds. If you hear cr
 `CS_JOYMAP=A=1,B=0,...` renumbers the buttons (also `L2`, `R2`, `L3`, `R3`, `F1`, `F2`), for a firmware that
 differs. `log.txt` lists the controllers found and any button the app doesn't use.
 
+## Logs and tuning
+
+Two files in the app folder tell you how Columbia Street runs on your device:
+
+- **`log.txt`**, written by the app: the firmware and board, the processor, the screen, the controllers, the sound
+  device and SDL's driver, then every 10 seconds a **STAT** line (the audio load, dropouts, late calls, clicks
+  made in the app, the longest wait between two buffers, the screen's frame rate, the processor's clock and
+  temperature) and a **PROC** line (the processor's time by thread with the audio thread marked, memory and its
+  peak, page faults, free memory, how often the audio thread was preempted). **JUMP** lines mark each click the
+  app's own output made, with its time; a click heard with no JUMP and no dropout comes from the sound server.
+  **HINT** lines say what to change, and an **END** line sums up the session.
+- **`sysinfo.txt`**, written by `sysinfo.sh` from `launch.sh`: the system and its sound path (PipeWire's devices,
+  rate and quantum, the mixer), then every 10 seconds the load, clock, temperature, busiest processes and
+  PipeWire's nodes with their **ERR** (xrun) counts.
+
+`CS_LOG=2` in `launch.sh` writes the lines every second; `CS_LOG=0` turns the log off, `CS_SYSINFO=0` the report.
+
 ## Wi-Fi sync
 
 Columbia Street speaks HI5S, the sync protocol of HI5 and Jaffedrone. Units on the same network

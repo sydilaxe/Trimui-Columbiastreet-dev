@@ -129,6 +129,7 @@ jobs:
           grep -q "^clock out stopped: pulses 0 (want 0)" $r
           grep -q "^update prompt: shown 1, A installs 1, B closes it 1, pattern untouched 1" $r
           # USB MIDI clock and the Brick Pro's sticks
+          grep -q "^perflog jumps: .*(want 0 1 0 0 0: 1)" $r
           grep -q "^midi clock in: START plays 1 from the first step 1, 120 BPM -> .* (1), phase within .* (want under 0.1: 1), STOP stops 1" $r
           grep -q "^midi cc: .*CC7 not ours: 1$" $r
           grep -q "^midi notes: channel 1 plays break 1 1, channel 5 the bass at A2 1 .*let go fades 1" $r
