@@ -26,8 +26,8 @@ SDL_INC := third_party/SDL2-2.30.9-headers
 SRC    := src/engine.c src/breaks.c src/ui.c src/gfx.c src/sync.c src/aclock.c
 HDR    := src/engine.h src/breaks.h src/ui.h src/gfx.h src/sync.h src/aclock.h src/font_data.h src/update.h
 NET    := src/net.c src/update.c # the self-updater, on the device and in build/cs_update
-PLAT   := src/midi.c src/leds.c src/main_trimui.c
-PLATH  := src/midi.h src/net.h src/leds.h
+PLAT   := src/midi.c src/leds.c src/perflog.c src/main_trimui.c
+PLATH  := src/midi.h src/net.h src/leds.h src/perflog.h
 CFLAGS := -O2 -std=gnu11 -Wall -Wextra -fno-math-errno
 APP    := dist/ColumbiaStreet
 SAMPLES := $(APP)/breaks/AMEN_153bpm.wav
@@ -103,9 +103,9 @@ build/brickpro/columbia: $(SRC) $(NET) $(PLAT) $(HDR) $(PLATH) build/version bui
 	@mkdir -p build/brickpro
 	$(DEVICE_CC) -DCS_BRICKPRO -o $@ $(SRC) $(NET) $(PLAT) $(DEVICE_LINK)
 
-build/cs_test: $(SRC) src/midi.c src/leds.c src/main_test.c $(HDR) src/midi.h src/leds.h build/version
+build/cs_test: $(SRC) src/midi.c src/leds.c src/perflog.c src/main_test.c $(HDR) src/midi.h src/leds.h src/perflog.h build/version
 	@mkdir -p build
-	cc $(CFLAGS) $(VERDEF) -o $@ $(SRC) src/midi.c src/leds.c src/main_test.c -lm -lpthread
+	cc $(CFLAGS) $(VERDEF) -o $@ $(SRC) src/midi.c src/leds.c src/perflog.c src/main_test.c -lm -lpthread
 
 test: build/cs_test $(SAMPLES)
 	@mkdir -p build/test
@@ -127,10 +127,11 @@ build/ColumbiaStreet-%.zip: build/%/columbia $(APP)/icon.png $(APP)/VERSION $(AP
 	mkdir -p build/sd-$*/Apps
 	cp -r $(APP) build/sd-$*/Apps/
 	rm -f build/sd-$*/Apps/ColumbiaStreet/*.sav* build/sd-$*/Apps/ColumbiaStreet/log.txt \
-		build/sd-$*/Apps/ColumbiaStreet/leds_saved.txt
+		build/sd-$*/Apps/ColumbiaStreet/leds_saved.txt build/sd-$*/Apps/ColumbiaStreet/sysinfo.txt
 	cp build/$*/columbia build/sd-$*/Apps/ColumbiaStreet/
 	echo $* > build/sd-$*/Apps/ColumbiaStreet/DEVICE # which build: read by install.sh
-	chmod +x build/sd-$*/Apps/ColumbiaStreet/launch.sh build/sd-$*/Apps/ColumbiaStreet/columbia
+	chmod +x build/sd-$*/Apps/ColumbiaStreet/launch.sh build/sd-$*/Apps/ColumbiaStreet/sysinfo.sh \
+		build/sd-$*/Apps/ColumbiaStreet/columbia
 	cd build/sd-$* && zip -qr ../ColumbiaStreet-$*.zip Apps
 
 # MustardOS: a .muxapp is a zip that its Archive Manager unpacks into the application folder
@@ -144,10 +145,11 @@ build/ColumbiaStreet-mustardos-%.muxapp: build/%/columbia $(APP)/icon.png $(APP)
 	mkdir -p "build/mux-$*/$(MUX_APP)"
 	cp -r $(APP)/. "build/mux-$*/$(MUX_APP)/"
 	cp -r $(MUX)/. "build/mux-$*/$(MUX_APP)/"
-	rm -f "build/mux-$*/$(MUX_APP)/"*.sav* "build/mux-$*/$(MUX_APP)/log.txt" "build/mux-$*/$(MUX_APP)/leds_saved.txt"
+	rm -f "build/mux-$*/$(MUX_APP)/"*.sav* "build/mux-$*/$(MUX_APP)/log.txt" "build/mux-$*/$(MUX_APP)/leds_saved.txt" \
+		"build/mux-$*/$(MUX_APP)/sysinfo.txt"
 	cp build/$*/columbia "build/mux-$*/$(MUX_APP)/"
 	echo $* > "build/mux-$*/$(MUX_APP)/DEVICE"
-	chmod +x "build/mux-$*/$(MUX_APP)/launch.sh" "build/mux-$*/$(MUX_APP)/mux_launch.sh" \
+	chmod +x "build/mux-$*/$(MUX_APP)/launch.sh" "build/mux-$*/$(MUX_APP)/mux_launch.sh" "build/mux-$*/$(MUX_APP)/sysinfo.sh" \
 		"build/mux-$*/$(MUX_APP)/wake_screen.sh" "build/mux-$*/$(MUX_APP)/columbia"
 	cd build/mux-$* && zip -qr ../ColumbiaStreet-mustardos-$*.muxapp "$(MUX_APP)"
 

@@ -28,6 +28,7 @@
 #include "gfx.h"
 #include "leds.h"
 #include "midi.h"
+#include "perflog.h"
 #include "net.h"
 #include "sync.h"
 #include "ui.h"
@@ -84,9 +85,12 @@ static void unlock(void)
 static void audio_cb(void *ud, Uint8 *stream, int len)
 {
     (void)ud;
-    aclock_request(now_us(), len / 4);
+    uint64_t t0 = perf_audio_begin(len / 4); /* the log's load and dropout counters */
+    aclock_request(t0, len / 4);
     engine_render((int16_t *)stream, len / 4);
     aclock_made(len / 4, engine_position(), engine_steps_per_frame());
+    perf_audio_output((const int16_t *)stream, len / 4); /* JUMP: a click made here */
+    perf_audio_end(t0);
 }
 
 static int is_usb_name(const char *n)
@@ -154,6 +158,10 @@ static int open_output_locked(const char *name, int start)
     }
     snprintf(dev_name, sizeof dev_name, "%s", name ? name : "");
     fprintf(stderr, "audio out: %s, %d Hz, %d frames a buffer\n", name ? name : "speaker / headphones", rate, bufsz);
+    perf_audio_open(rate, have.samples, name);
+    /* which way the sound goes (on MustardOS: PipeWire, or ALSA through PipeWire's plugin), and what the device took */
+    perf_log("AUDIO", "SDL %s driver: %d Hz, %d channels, format 0x%x, %d frames a buffer", SDL_GetCurrentAudioDriver(),
+             have.freq, (int)have.channels, (unsigned)have.format, (int)have.samples);
     if (start)
         SDL_PauseAudioDevice(dev, 0);
     return 1;
@@ -588,6 +596,11 @@ int main(int argc, char **argv)
     signal(SIGINT, on_signal);
     uint64_t t_start = now_us();
     fprintf(stderr, "columbia street v%s for %s\n", CS_VERSION, DEVICE_NAME);
+#ifdef CS_BRICKPRO
+    perf_init("CS", "brickpro"); /* the performance log, in log.txt (CS_LOG) */
+#else
+    perf_init("CS", "brick");
+#endif
 
     rate = env_int("CS_RATE", 48000);
     bufsz = env_int("CS_BUFFER", 512); /* the A53s have the time: half the Miyoo's delay */
@@ -724,9 +737,12 @@ int main(int argc, char **argv)
         }
         if (relaunch_at && (Sint32)(now - relaunch_at) >= 0)
             break;
+        uint64_t f0 = now_us();
         ui_draw(fb);
         leds_update(ui_scene_on());
         present();
+        perf_frame(now_us() - f0);
+        perf_tick();
 
         if (now - last_save > 15000) {
             last_save = now;
@@ -746,5 +762,6 @@ int main(int argc, char **argv)
         SDL_CloseAudioDevice(dev);
     SDL_Quit();
     breaks_free();
+    perf_close();
     return update_status()->state == UP_INSTALLED ? RELAUNCH_STATUS : 0; /* launch.sh starts the new version */
 }

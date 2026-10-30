@@ -20,6 +20,12 @@ OS, add `CS_DEVICE=brickpro` before `bash` the first time on a Brick Pro):
 curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/main/install.sh | bash
 ```
 
+**New: logs to find clicks and tune the app**
+- `log.txt` adds the performance log the other TrimUI apps have: a **STAT** line every 10 s (audio load,
+  dropouts, late calls, clicks, the screen, the processor) and a **PROC** line (cpu by thread, memory, faults, how
+  often the audio thread was preempted), **JUMP** lines for each click made in the app, and **HINT** lines.
+- `sysinfo.txt`, a report of the system and its sound path, with PipeWire's xrun counts every 10 s.
+
 **New: MustardOS**
 - Packages for MustardOS on the Brick, Brick Hammer and Brick Pro, installed from the Archive Manager. The app
   reads MustardOS's controller, so every button (and the Brick Pro's sticks) works as on TrimUI OS, and it

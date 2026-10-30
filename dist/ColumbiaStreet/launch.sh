@@ -25,10 +25,15 @@ export LD_LIBRARY_PATH="/usr/trimui/lib:/usr/lib:$LD_LIBRARY_PATH"
 #   CS_JOYMAP=A=1,B=0  another firmware's button numbers (also L2, R2, L3, R3, F1, F2)
 #   CS_LEDS=0          leave the LEDs alone (default: F1/F2 show the mute scenes, the top bar the beat,
 #                      the sticks' LEDs on the Brick Pro / the triggers' on the Brick the level)
+#   CS_LOG=2           the performance log in log.txt every second (1: every 10 s, the default; 0: off).
+#                      CS_SYSINFO=0: no sysinfo.txt, the system report (see sysinfo.sh)
+[ "${CS_SYSINFO:-1}" != 0 ] && [ "${CS_LOG:-1}" != 0 ] && ./sysinfo.sh start columbia
 # exit status 75: the app has just updated itself, so start the new version
 while :; do
     ./columbia > log.txt 2>&1
     [ $? -eq 75 ] || break
 done
+
+./sysinfo.sh stop columbia
 
 [ -n "$gov_was" ] && echo "$gov_was" > $CPU/cpu0/cpufreq/scaling_governor 2>/dev/null
