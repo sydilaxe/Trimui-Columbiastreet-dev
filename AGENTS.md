@@ -23,6 +23,13 @@ and out through ALSA raw MIDI). The engine, the pages and Wi-Fi sync are shared 
 version; keep the engine the same sound as there (with the sticks at rest, `build/test/session.wav`
 matches the Miyoo harness's sample for sample).
 
+The mute scenes (M1, M2: the mixer's mutes and solos, saved in the song after the v0.3 fields;
+F1 / F2, or R2 + L1 / R1 where there are no function buttons) live in `src/ui.c` and are new on the
+TrimUI; the Miyoo version doesn't have them yet, so its loader rejects a song saved here (this one
+loads either). `src/leds.c` drives the Brick's and Brick Pro's LEDs (`/sys/class/led_anim`, as
+NextUI does) from its own thread and puts the user's LED settings back at quit; `make test` checks
+it against a stand-in folder.
+
 Samples are never committed: `tools/fetch_samples.sh` fetches them from Dirt-Samples at a pinned
 commit into `dist/ColumbiaStreet/breaks` and `bass` (both gitignored apart from their
 README.txt). The breaks are real recordings sliced at load time (`src/breaks.c`), not

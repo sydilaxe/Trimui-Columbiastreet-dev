@@ -56,6 +56,10 @@ static int have_undo;
 static const UpdateStatus *upd;
 static void (*upd_install)(void);
 static int upd_open, upd_asked; /* the update prompt is up; it has been shown this session */
+/* the mute scene switched on (0, 1) or -1, and the mutes and solos it
+ * replaced, which switching it off brings back */
+static int scene_on = -1;
+static uint8_t scene_was_mute[NV], scene_was_solo[NV];
 
 /* mix page rows: voices have LEVEL, PAN, SEND; the master column has more */
 enum { MX_LEVEL, MX_PAN, MX_SEND, NMXV };
@@ -411,8 +415,69 @@ static void song_action(int b, int repeats)
     }
 }
 
+/* ------- mute scenes
+ * Two saved sets of the mixer's mutes and solos (M1, M2), to switch on and
+ * off in one press while the beat plays: F1 / F2 on the TrimUI, or R2 + L1 /
+ * R1 on any page but MIX. Saving: R2 + F1 / F2, or R2 + L1 / R1 on MIX. Switching
+ * one on remembers the mutes and solos it replaces; switching it off (the same
+ * button again) brings those back. The other scene while one is on swaps
+ * straight to it, and off still goes back to how things were before either. */
+static void scene_save(int k)
+{
+    memcpy(song.scene_mute[k], song.pat.mute, NV);
+    memcpy(song.scene_solo[k], song.solo, NV);
+    song.scene_used[k] = 1;
+    if (scene_on >= 0 && scene_on != k)
+        scene_on = -1; /* the mixer as it is now is what the next press switches from */
+    say("MUTES SAVED TO M%d", k + 1);
+}
+
+static void scene_toggle(int k)
+{
+    if (!song.scene_used[k]) {
+        say("M%d IS EMPTY: R2+%s SAVES THE MUTES", k + 1, page == PAGE_MIX ? (k ? "R1" : "L1") : (k ? "F2" : "F1"));
+        return;
+    }
+    if (scene_on == k) {
+        memcpy(song.pat.mute, scene_was_mute, NV);
+        memcpy(song.solo, scene_was_solo, NV);
+        scene_on = -1;
+        say("M%d OFF", k + 1);
+        return;
+    }
+    if (scene_on < 0) {
+        memcpy(scene_was_mute, song.pat.mute, NV);
+        memcpy(scene_was_solo, song.solo, NV);
+    }
+    memcpy(song.pat.mute, song.scene_mute[k], NV);
+    memcpy(song.solo, song.scene_solo[k], NV);
+    scene_on = k;
+    say("M%d ON", k + 1);
+}
+
+int ui_scene_on(void) { return scene_on; }
+
 static void action(int b, int repeats)
 {
+    /* the mute scenes, before L1 / R1 change the page */
+    if (b == BTN_F1 || b == BTN_F2) {
+        int k = b == BTN_F2;
+        if (held[BTN_R2])
+            scene_save(k);
+        else
+            scene_toggle(k);
+        changed = 1;
+        return;
+    }
+    if (held[BTN_R2] && (b == BTN_L1 || b == BTN_R1)) {
+        int k = b == BTN_R1;
+        if (page == PAGE_MIX)
+            scene_save(k);
+        else
+            scene_toggle(k);
+        changed = 1;
+        return;
+    }
     if (held[BTN_R2] && is_dpad(b))
         return; /* the d-pad plays the punch-in effects while R2 is held */
     if (held[BTN_R2] && b == BTN_X) {
@@ -600,6 +665,13 @@ static void draw_header(void)
     int bw = gfx_text_w(bpm, FONT_LARGE);
     gfx_text(SCREEN_W - 8 - bw, 2, bpm, C_TEXT, FONT_LARGE);
     int ix = SCREEN_W - 8 - bw - 22, bx = ix - 8;
+    /* the mute scenes: lit while on, dim while saved and off */
+    for (int k = NSCENE - 1; k >= 0; k--)
+        if (song.scene_used[k]) {
+            char m[4];
+            snprintf(m, sizeof m, "M%d", k + 1);
+            badge(&bx, m, scene_on == k ? C_MUTE : C_PANEL2, scene_on == k ? 0x000000 : C_DIM);
+        }
     if (song.sync_mode != SYNC_OFF) {
         const SyncStatus *ss = sync_status();
         int linked = ss->leading || ss->have_leader;
@@ -628,7 +700,7 @@ static void draw_footer(void)
         "A:ON  X/Y:HITS  B+^v:STEPS  B+<>:ROT  B:EUCLID",
         "<>:CHANNEL  X/Y:+/-  A:PLAY SLICE  B:MUTE",
         "DPAD:SELECT  X/Y:+/-  A:PLAY  B:MUTE",
-        "DPAD:SELECT  X/Y:+/-  A:MUTE  B:SOLO",
+        "X/Y:+/-  A:MUTE  B:SOLO  R2+L1/R1:SAVE M1/M2",
         "A:LOAD  X:SAVE  R2+Y:CLEAR",
     };
     const char *hint = hints[page];

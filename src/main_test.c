@@ -10,11 +10,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "aclock.h"
 #include "breaks.h"
 #include "engine.h"
 #include "gfx.h"
+#include "leds.h"
 #include "midi.h"
 #include "sync.h"
 #include "ui.h"
@@ -614,6 +617,155 @@ int main(int argc, char **argv)
         int undo_mutes = song.pat.mute[1] == 0 && song.pat.mute[V_BASS] == 1;
         printf("select: new beat %d, mutes kept %d, mixer kept %d; undo back %d, mutes kept %d\n", new_beat, mutes,
                mixer, undone, undo_mutes);
+    }
+
+    /* ---- mute scenes: save the mutes and solos on MIX (R2 + L1), change
+     * them, F1 switches the scene on and back off; R2 + F2 saves M2 anywhere;
+     * an empty scene changes nothing; the scenes survive a save and load */
+    {
+        song_default();
+        memset(song.pat.mute, 0, NV);
+        memset(song.solo, 0, NV);
+        song.pat.mute[1] = song.pat.mute[V_BASS] = 1;
+        song.solo[3] = 1;
+        uint8_t m1[NV], s1[NV];
+        memcpy(m1, song.pat.mute, NV);
+        memcpy(s1, song.solo, NV);
+        ui_set_page(PAGE_MIX);
+        ui_button(BTN_R2, 1), ui_button(BTN_L1, 1), ui_button(BTN_L1, 0), ui_button(BTN_R2, 0);
+        int saved = song.scene_used[0] && !memcmp(song.scene_mute[0], m1, NV) && !memcmp(song.scene_solo[0], s1, NV) &&
+                    ui_page() == PAGE_MIX; /* R2 + L1 saved, and didn't change the page */
+        /* everything playing, then F1: M1's mutes and solos; F1 again: back */
+        memset(song.pat.mute, 0, NV);
+        memset(song.solo, 0, NV);
+        ui_set_page(PAGE_PATTERN);
+        int empty_f2 = 0;
+        ui_button(BTN_F2, 1), ui_button(BTN_F2, 0); /* M2 empty: nothing changes */
+        for (int v = 0; v < NV; v++)
+            empty_f2 |= song.pat.mute[v] | song.solo[v];
+        empty_f2 = !empty_f2 && ui_scene_on() < 0;
+        ui_button(BTN_F1, 1), ui_button(BTN_F1, 0);
+        int on = ui_scene_on() == 0 && !memcmp(song.pat.mute, m1, NV) && !memcmp(song.solo, s1, NV);
+        ui_button(BTN_F1, 1), ui_button(BTN_F1, 0);
+        int off = ui_scene_on() < 0;
+        for (int v = 0; v < NV; v++)
+            off &= !song.pat.mute[v] && !song.solo[v];
+        /* R2 + F2 saves M2 (the bass alone muted); R2 + L1 off MIX switches M1 */
+        song.pat.mute[V_BASS] = 1;
+        ui_button(BTN_R2, 1), ui_button(BTN_F2, 1), ui_button(BTN_F2, 0), ui_button(BTN_R2, 0);
+        song.pat.mute[V_BASS] = 0;
+        ui_button(BTN_R2, 1), ui_button(BTN_L1, 1), ui_button(BTN_L1, 0), ui_button(BTN_R2, 0);
+        int combo = ui_scene_on() == 0 && ui_page() == PAGE_PATTERN && !memcmp(song.pat.mute, m1, NV);
+        /* M2 while M1 is on swaps to it; off from there goes back to before M1 */
+        ui_button(BTN_F2, 1), ui_button(BTN_F2, 0);
+        int swap = ui_scene_on() == 1 && song.pat.mute[V_BASS] && !song.pat.mute[1] && !song.solo[3];
+        ui_button(BTN_F2, 1), ui_button(BTN_F2, 0);
+        int back = ui_scene_on() < 0 && !song.pat.mute[V_BASS] && !song.pat.mute[1];
+        /* kept in the song file */
+        char sp[600];
+        snprintf(sp, sizeof sp, "%s/scenes.sav", out);
+        song_save(sp);
+        Song keep = song;
+        song_default();
+        int kept = song_load(sp) && song.scene_used[0] && song.scene_used[1] &&
+                   !memcmp(song.scene_mute, keep.scene_mute, sizeof keep.scene_mute) &&
+                   !memcmp(song.scene_solo, keep.scene_solo, sizeof keep.scene_solo);
+        /* a screenshot: MIX with M1 on (lit in the header) and M2 saved (dim) */
+        ui_set_page(PAGE_MIX);
+        ui_button(BTN_F1, 1), ui_button(BTN_F1, 0);
+        ui_draw(fb);
+        snprintf(path, sizeof path, "%s/scenes.ppm", out);
+        write_ppm(path, fb);
+        ui_button(BTN_F1, 1), ui_button(BTN_F1, 0);
+        printf("scenes: saved %d, empty does nothing %d, on %d, off %d, R2+L1 %d, swap %d, back %d, kept %d\n", saved,
+               empty_f2, on, off, combo, swap, back, kept);
+    }
+
+    /* ---- a save from before the scenes (v0.3) still loads, without scenes */
+    {
+        song_default();
+        song.bpm = 147.f;
+        song.scene_used[0] = 1;
+        char p3[600];
+        snprintf(p3, sizeof p3, "%s/v03.sav", out);
+        song_save(p3);
+        FILE *f = fopen(p3, "rb");
+        static unsigned char buf[sizeof(Song) + 4096];
+        size_t got = fread(buf, 1, sizeof buf, f);
+        fclose(f);
+        uint32_t v3 = (uint32_t)offsetof(Song, scene_mute);
+        memcpy(buf + 4, &v3, 4);
+        memmove(buf + v3, buf + sizeof(Song), got - sizeof(Song)); /* drop the new fields */
+        f = fopen(p3, "wb");
+        fwrite(buf, 1, got - (sizeof(Song) - v3), f);
+        fclose(f);
+        song_default();
+        int ok = song_load(p3);
+        printf("save compat v0.3: %d, bpm %.0f, scenes %d\n", ok, song.bpm, song.scene_used[0] + song.scene_used[1]);
+    }
+
+    /* ---- the LEDs, into a stand-in for the led_anim driver: F1 lit with M1
+     * on, the top bar orange on the bar's first beat, lr in the loudest
+     * channel's colour; the settings found at start back at the end */
+    {
+        char ld[600], fp[700];
+        snprintf(ld, sizeof ld, "%s/led_anim", out);
+        mkdir(ld, 0755);
+        static const char *const files[] = {"effect_rgb_hex_f1", "effect_rgb_hex_f2", "effect_rgb_hex_m",
+                                            "effect_rgb_hex_lr", "effect_f1", "effect_f2", "effect_m", "effect_lr",
+                                            "max_scale", "max_scale_lr", "max_scale_f1f2", "effect_enable"};
+        static const char *const before[] = {"123456", "123456", "123456", "123456", "2", "2", "2", "2",
+                                             "10", "10", "10", "1"};
+        for (int i = 0; i < 12; i++) {
+            snprintf(fp, sizeof fp, "%s/%s", ld, files[i]);
+            FILE *f = fopen(fp, "w");
+            fprintf(f, "%s\n", before[i]);
+            fclose(f);
+        }
+        setenv("CS_LED_DIR", ld, 1);
+        int started = leds_start();
+        song_default();
+        live.playing = 1;
+        live.step = 0;
+        for (int v = 0; v <= NV; v++)
+            live.meter[v] = 0.f;
+        live.meter[2] = 0.6f, live.meter[NV] = 0.5f;
+        leds_update(0);
+        usleep(80000); /* the LED thread writes it */
+        char f1[16], m[16], lr[16], f2[16];
+        snprintf(fp, sizeof fp, "%s/effect_rgb_hex_f1", ld);
+        FILE *f = fopen(fp, "r");
+        int r = fscanf(f, "%15s", f1);
+        fclose(f);
+        snprintf(fp, sizeof fp, "%s/effect_rgb_hex_f2", ld);
+        f = fopen(fp, "r");
+        r += fscanf(f, "%15s", f2);
+        fclose(f);
+        snprintf(fp, sizeof fp, "%s/effect_rgb_hex_m", ld);
+        f = fopen(fp, "r");
+        r += fscanf(f, "%15s", m);
+        fclose(f);
+        snprintf(fp, sizeof fp, "%s/effect_rgb_hex_lr", ld);
+        f = fopen(fp, "r");
+        r += fscanf(f, "%15s", lr);
+        fclose(f);
+        int lit = r == 4 && !strcmp(f1, "FF2030") && !strcmp(f2, "000000") && !strcmp(m, "FF6414");
+        int level = !strcmp(lr, "388957"); /* 0x5adc8c at 5/8 */
+        leds_stop();
+        live.playing = 0;
+        snprintf(fp, sizeof fp, "%s/effect_rgb_hex_f1", ld);
+        f = fopen(fp, "r");
+        r = fscanf(f, "%15s", f1);
+        fclose(f);
+        snprintf(fp, sizeof fp, "%s/max_scale_f1f2", ld);
+        f = fopen(fp, "r");
+        int sc = 0;
+        r += fscanf(f, "%d", &sc);
+        fclose(f);
+        int restored = r == 2 && !strcmp(f1, "123456") && sc == 10;
+        unsetenv("CS_LED_DIR");
+        printf("leds: driven %d, F1 lit, F2 dark, bar orange %d, level in the loudest channel's colour %d (%s), restored %d\n",
+               started, lit, level, lr, restored);
     }
 
     /* ---- sync: a leader's packet sets our tempo */

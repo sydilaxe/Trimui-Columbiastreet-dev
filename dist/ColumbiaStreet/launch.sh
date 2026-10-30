@@ -22,7 +22,9 @@ export LD_LIBRARY_PATH="/usr/trimui/lib:/usr/lib:$LD_LIBRARY_PATH"
 #   CS_MIDI=0          no USB MIDI
 #   CS_MIDI_CLOCK=0    send no MIDI clock;  CS_MIDI_FOLLOW=0  ignore MIDI clock coming in
 #   CS_ROTATE=180      turn the picture, for a firmware whose screen is turned
-#   CS_JOYMAP=A=1,B=0  another firmware's button numbers
+#   CS_JOYMAP=A=1,B=0  another firmware's button numbers (also L2, R2, L3, R3, F1, F2)
+#   CS_LEDS=0          leave the LEDs alone (default: F1/F2 show the mute scenes, the top bar the beat,
+#                      the sticks' LEDs on the Brick Pro / the triggers' on the Brick the level)
 # exit status 75: the app has just updated itself, so start the new version
 while :; do
     ./columbia > log.txt 2>&1

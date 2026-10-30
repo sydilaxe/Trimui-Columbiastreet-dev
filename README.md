@@ -130,7 +130,33 @@ These work on every page:
 | R2 + up / right | Repeat the last 1/8 / 1/16 |
 | R2 + left / down | Reverse / tape stop |
 | R2 + X | Tap tempo (taps under 100 BPM count double) |
+| F1 / F2 | Mute scene M1 / M2 on or off (see below) |
+| R2 + F1 / F2 | Save the mixer's mutes and solos as M1 / M2 |
+| R2 + L1 / R1 | M1 / M2 on or off; on the MIX page, save M1 / M2 |
 | MENU | Quit |
+
+### Mute scenes
+
+Two saved sets of the mixer's mutes and solos, M1 and M2, to drop channels in and out in one press
+while the beat plays. Set the mutes and solos on MIX (A mutes, B solos), then R2 + L1 saves them as
+M1 and R2 + R1 as M2 (R2 + F1 / F2 does the same on any page). F1 switches M1 on: the mixer takes
+its mutes and solos. F1 again switches it off, and the mutes and solos come back as they were. F2
+does the same for M2; pressing F2 while M1 is on swaps straight to M2, and off then goes back to how
+things were before either. Without F1 and F2 (the Miyoo, a keyboard), R2 + L1 / R1 switch the
+scenes from any page but MIX. The header shows M1 and M2 once saved, lit while on, and F1's and
+F2's own LEDs light while their scene is on. The scenes are saved with the song.
+
+### LEDs
+
+On the Brick and Brick Pro, Columbia Street plays the LEDs along:
+
+- **F1 and F2** light red while their mute scene is on.
+- **The top bar** keeps the tempo: a flash on each beat that fades through it, orange on the
+  first beat of the bar. It is dark while stopped.
+- **The analog sticks' LEDs** on the Brick Pro (the triggers' on the Brick) follow the sound: as
+  bright as the output is loud, in the colour of the loudest channel, red when it clips.
+
+Your own LED settings are put back when you quit. `CS_LEDS=0` in `launch.sh` leaves the LEDs alone.
 
 When a new version is out, a prompt covers the page: A updates and restarts, B (or MENU) says
 not now. The sequencer keeps playing, and the rest of the buttons wait until it closes.
@@ -160,7 +186,8 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
   RESO, WIDTH (Reese detune, growl wobble, sub warmth), DRIVE, ROLL and ALT (octave up, fifth,
   octave down, slide, rest).
 - **MIX**: a column per channel (LEVEL, PAN, SEND to the reverb) and the master (LEVEL, GLUE
-  compressor, DRIVE, VERB time, TONE, and the L2 sweep time). A mutes, B solos.
+  compressor, DRIVE, VERB time, TONE, and the L2 sweep time). A mutes, B solos; R2 + L1 / R1
+  saves the mutes and solos as mute scene M1 / M2.
 - **SONG**: pattern slots A-H. A loads a slot (at the next bar while playing), X saves the
   pattern into it, R2+Y clears it. Below them are the tempo, the Wi-Fi sync mode and the
   output row (OUTPUT, CLOCK ON, PPQN, PULSE): left / right picks a setting, X / Y changes it.
@@ -206,7 +233,7 @@ The sound is made in 512-frame buffers at 48 kHz (about 11 ms, half the Miyoo's 
 memory locked so it never waits for a page to be read back in; the screen runs below it at 30
 frames a second, and the buttons are read every few milliseconds. If you hear crackles, set
 `CS_BUFFER=1024`. `CS_RATE=44100` does a little less work. `CS_ROTATE=180` turns the picture and
-`CS_JOYMAP=A=1,B=0,...` renumbers the buttons (also `L2`, `R2`, `L3`, `R3`), for a firmware that
+`CS_JOYMAP=A=1,B=0,...` renumbers the buttons (also `L2`, `R2`, `L3`, `R3`, `F1`, `F2`), for a firmware that
 differs. `log.txt` lists the controllers found and any button the app doesn't use.
 
 ## Wi-Fi sync

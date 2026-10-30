@@ -7,6 +7,7 @@ enum {
     BTN_A, BTN_B, BTN_X, BTN_Y,
     BTN_L1, BTN_R1, BTN_L2, BTN_R2,
     BTN_SELECT, BTN_START, BTN_MENU,
+    BTN_F1, BTN_F2, /* the TrimUI's function buttons: mute scenes M1 and M2 (R2 + L1 / R1 elsewhere) */
     BTN_COUNT
 };
 
@@ -35,3 +36,4 @@ void ui_notice(const char *msg); /* a message on screen (main thread only): USB 
 void ui_stick_fx(int fx);
 void ui_tap_tempo(void);
 void ui_set_page(int p); /* for the test harness */
+int ui_scene_on(void);    /* the mute scene switched on (0 M1, 1 M2), or -1 */

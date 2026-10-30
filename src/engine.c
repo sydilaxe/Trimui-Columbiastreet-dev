@@ -11,6 +11,7 @@
 #define SONG_MAGIC 0x31545343u /* "CST1" */
 /* a v0.1 save: the same song without the output settings at the end */
 #define SONG_SIZE_V1 offsetof(Song, out_mode)
+#define SONG_SIZE_V2 offsetof(Song, scene_mute) /* up to v0.3: no mute scenes */
 
 Song song;
 Live live = {.fx = -1, .queued_slot = -1, .cur_slot = -1};
@@ -1479,9 +1480,14 @@ int song_load(const char *path)
     static Song s;
     Names nm[1 + NSLOT];
     uint32_t hdr[2] = {0, 0};
-    int ok = fread(hdr, sizeof hdr, 1, f) == 1 && hdr[0] == SONG_MAGIC && (hdr[1] == sizeof s || hdr[1] == SONG_SIZE_V1);
+    /* this version's size, or an older one's (the fields it lacks start at
+     * their defaults), or a newer one's (its extra fields are skipped) */
+    int ok = fread(hdr, sizeof hdr, 1, f) == 1 && hdr[0] == SONG_MAGIC &&
+             (hdr[1] == SONG_SIZE_V1 || (hdr[1] >= SONG_SIZE_V2 && hdr[1] <= 4 * sizeof s));
+    size_t take = ok && hdr[1] < sizeof s ? hdr[1] : sizeof s;
     memset(&s, 0, sizeof s);
-    ok = ok && fseek(f, 0, SEEK_SET) == 0 && fread(&s, hdr[1], 1, f) == 1 && fread(nm, sizeof nm, 1, f) == 1;
+    ok = ok && fseek(f, 0, SEEK_SET) == 0 && fread(&s, take, 1, f) == 1 && fseek(f, (long)hdr[1], SEEK_SET) == 0 &&
+         fread(nm, sizeof nm, 1, f) == 1;
     fclose(f);
     if (!ok)
         return 0;
@@ -1512,6 +1518,11 @@ int song_load(const char *path)
     song.clk_side = clampi(song.clk_side, 0, 1);
     song.clk_ppqn = clampi(song.clk_ppqn, 0, NPPQN - 1);
     song.clk_width = clampi(song.clk_width, 1, 20);
+    for (int k = 0; k < NSCENE; k++) {
+        song.scene_used[k] = song.scene_used[k] != 0;
+        for (int v = 0; v < NV; v++)
+            song.scene_mute[k][v] = song.scene_mute[k][v] != 0, song.scene_solo[k][v] = song.scene_solo[k][v] != 0;
+    }
     return 1;
 }
 
