@@ -42,7 +42,8 @@ curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/
 - The screen wake now runs on MustardOS (the space in the app's folder, `Columbia Street`, stopped it), and the
   app makes its renderer again after the wake, and whenever SDL reports the picture lost or drawing fails.
 - F1 and F2 (the two lit buttons under the screen) now play the mute scenes on a Brick Pro under MustardOS,
-  which sends them as buttons 2 and 3.
+  which sends them as buttons 0 and 1. Volume up and down (2 and 3) only change the volume again; they had been
+  read as F1 and F2.
 
 **New: MustardOS**
 - Packages for MustardOS on the Brick, Brick Hammer and Brick Pro, installed from the Archive Manager. The app
