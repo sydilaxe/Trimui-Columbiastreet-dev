@@ -893,6 +893,37 @@ int main(int argc, char **argv)
             midi_reset();
         }
 
+        { /* MIDI notes: channel 1 plays break 1's slices, channel 5 the bass at the key's pitch */
+            song_default();
+            engine_init(RATE);
+            engine_set_playing(0);
+            midi_reset();
+            static int16_t nb[512 * 2];
+            uint32_t t0 = live.trig_count[0], t2 = live.trig_count[2], tb = live.trig_count[V_BASS];
+            uint8_t on1[3] = {0x90, 37, 100}, on5[3] = {0x94, 45, 100}, off5[3] = {0x84, 45, 0};
+            midi_feed(on1, 3, 1000);
+            midi_feed(on5, 3, 2000);
+            engine_render(nb, 512);
+            float peak = 0.f;
+            for (int k = 0; k < 40; k++) { /* the bass sounds while held */
+                engine_render(nb, 512);
+                for (int i = 0; i < 1024; i++)
+                    peak = fmaxf(peak, fabsf(nb[i] / 32768.f));
+            }
+            int brk_ok = live.trig_count[0] == t0 + 1 && live.trig_count[2] == t2;
+            int bass_ok = live.trig_count[V_BASS] == tb + 1 && live.note == 45 && peak > 0.01f;
+            midi_feed(off5, 3, 3000);
+            float tail = 0.f;
+            for (int k = 0; k < 200; k++)
+                engine_render(nb, 512);
+            for (int i = 0; i < 1024; i++)
+                tail = fmaxf(tail, fabsf(nb[i] / 32768.f));
+            printf("midi notes: channel 1 plays break 1 %d, channel 5 the bass at A2 %d (peak %.2f), "
+                   "let go fades %d (%.4f)\n", brk_ok, bass_ok, peak, tail < 0.01f, tail);
+            song_default();
+            midi_reset();
+        }
+
         song_default();
         song.bpm = 120.f;
         engine_init(RATE);

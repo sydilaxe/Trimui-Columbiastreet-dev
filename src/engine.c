@@ -852,6 +852,53 @@ void engine_audition(int v)
     live.trig_count[v]++;
 }
 
+/* MIDI notes: queued by the MIDI thread, played by the audio thread at the
+ * start of each block. Channels 1-4 play their break's slices, note 36 (C1)
+ * the first and each note up the next, round again past the last; channel 5
+ * plays the bass at the key's pitch, held while the key is. */
+#define NOTEQ 256
+static volatile uint32_t noteq[NOTEQ];
+static volatile unsigned noteq_w, noteq_r;
+static int bass_key = -1; /* the key the bass is holding, or -1 */
+#define NOTE_SLICE0 36
+
+void engine_note(int ch, int note, int vel)
+{
+    if (ch < 0 || ch >= NV || noteq_w - noteq_r >= NOTEQ)
+        return;
+    noteq[noteq_w % NOTEQ] = (uint32_t)ch << 16 | (uint32_t)(note & 127) << 8 | (uint32_t)(vel & 127);
+    __sync_synchronize();
+    noteq_w++;
+}
+
+static void notes_play(void)
+{
+    while (noteq_r != noteq_w) {
+        __sync_synchronize();
+        uint32_t m = noteq[noteq_r % NOTEQ];
+        __sync_synchronize();
+        noteq_r++;
+        int v = (int)(m >> 16), note = (int)(m >> 8 & 127), vel = (int)(m & 127);
+        if (v == V_BASS) {
+            if (vel > 0) {
+                bass_note(note, 1, 0);
+                bass.gate_left = -1; /* held until the key is let go */
+                bass_key = note;
+                live.trig_count[V_BASS]++;
+            }
+            else if (note == bass_key) {
+                bass.gate_left = 0; /* lets go at the next sample */
+                bass_key = -1;
+            }
+            continue;
+        }
+        if (vel > 0) {
+            brk_play(v, note - NOTE_SLICE0, 0, (float)song.pat.param[v][B_PITCH], vel / 127.f);
+            live.trig_count[v]++;
+        }
+    }
+}
+
 static const int ppqn_values[NPPQN] = {1, 2, 4, 8, 16, 24, 32};
 int clk_ppqn_value(int i) { return ppqn_values[i < 0 ? 0 : i >= NPPQN ? NPPQN - 1 : i]; }
 
@@ -916,6 +963,7 @@ void engine_render(int16_t *out, int frames)
     sps = sr * 15.f / song.bpm;
     if (step_phase > sps)
         step_phase = sps;
+    notes_play();
 
     int any_solo = 0;
     for (int v = 0; v < NV; v++)

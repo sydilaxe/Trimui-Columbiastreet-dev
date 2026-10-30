@@ -8,6 +8,9 @@
  *                  the playback speed, as Wi-Fi sync does
  *   START          from the top;  CONTINUE  from where it stopped;  STOP
  *   song position  places the sequencer (in 16ths)
+ *   notes          channels 1-4 play breaks 1-4's slices (note 36, C1, the
+ *                  first, each note up the next), channel 5 the bass at the
+ *                  key's pitch, held while the key is
  *   CC             the important settings (ui_midi_cc; see docs/MIDI.md)
  * Out, to every port: clock (24 a quarter note), START and STOP, while the
  * sequencer plays and no clock is coming in. The clock goes out as the sound

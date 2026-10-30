@@ -8,10 +8,11 @@ they are plugged in.
 
 | Function | Transmitted | Recognized | Remarks |
 |---|---|---|---|
-| Basic channel | none | 1-16 (any) | Every message is heard on any channel. |
-| Mode | none | Omni on | |
-| Note number | none | no | |
-| Velocity | none | no | |
+| Basic channel | none | 1-5 notes, 1-16 the rest | Notes: channels 1-4 play breaks 1-4, channel 5 the bass. CCs and clock are heard on any channel. |
+| Mode | none | Omni off for notes, omni on for the rest | |
+| Note number | none | 0-127 | Channels 1-4: note 36 (C1) plays the break's first slice, each note up the next, round again past the last. Channel 5: the bass at the key's pitch, held while the key is. |
+| Velocity: note on | none | yes | Channels 1-4: how loud the slice plays. |
+| Velocity: note off | none | no | |
 | Aftertouch | none | no | |
 | Pitch bend | none | no | |
 | Control change | none | yes | The settings in the CC table below. |
@@ -26,6 +27,15 @@ they are plugged in.
 | Reset | none | no | |
 
 `CS_MIDI=0` in `launch.sh` turns MIDI off.
+
+## Notes
+
+| Channel | Plays | Notes |
+|---|---|---|
+| 1-4 | Break channels 1-4 | Note 36 (C1) is the first slice, 37 the second and so on, round again past the last slice (a 16-slice break repeats every 16 notes). The slice plays at the channel's PITCH, as loud as the key is struck. |
+| 5 | The bass | The key's pitch, with the channel's wave and filter, held while the key is down. A key played while another is held glides to it (the GLIDE setting). |
+
+The notes play over the pattern, whether or not the sequencer is running. A muted channel stays silent.
 
 ## Settings by CC
 

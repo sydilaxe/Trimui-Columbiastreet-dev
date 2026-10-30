@@ -20,6 +20,11 @@ OS, add `CS_DEVICE=brickpro` before `bash` the first time on a Brick Pro):
 curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/main/install.sh | bash
 ```
 
+**New: MIDI notes play the channels**
+- Each channel plays from its own MIDI channel: notes on channels 1-4 play breaks 1-4's slices (note 36, C1,
+  is the first slice, each note up the next), as loud as the key is struck; notes on channel 5 play the bass at
+  the key's pitch, held while the key is down.
+
 **New: the important settings by MIDI CC**
 - The channel, mixer, pattern and play settings that matter most each have a MIDI CC, on any channel: CC 2
   chooses the channel (breaks 1-4 or the bass), 14-26 set its params, 27-31 its level, pan, send, mute and solo,

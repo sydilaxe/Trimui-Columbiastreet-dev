@@ -190,6 +190,10 @@ int midi_take_cc(int *ch, int *cc, int *v)
 static void message(uint64_t t)
 {
     (void)t;
+    /* notes: channels 1-4 the breaks' slices, 5 the bass (a note on at
+     * velocity 0 is a note off) */
+    if ((status & 0xf0) == 0x90 || (status & 0xf0) == 0x80)
+        engine_note(status & 15, data[0], (status & 0xf0) == 0x90 ? data[1] : 0);
     if ((status & 0xf0) == 0xb0 && ccq_w - ccq_r < CCQ) {
         ccq[ccq_w % CCQ] = (uint32_t)(status & 15) << 16 | (uint32_t)(data[0] & 127) << 8 | (uint32_t)(data[1] & 127);
         __sync_synchronize();
