@@ -25,6 +25,24 @@ curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/
   dropouts, late calls, clicks, the screen, the processor) and a **PROC** line (cpu by thread, memory, faults, how
   often the audio thread was preempted), **JUMP** lines for each click made in the app, and **HINT** lines.
 - `sysinfo.txt`, a report of the system and its sound path, with PipeWire's xrun counts every 10 s.
+**New: MIDI notes play the channels**
+- Each channel plays from its own MIDI channel: notes on channels 1-4 play breaks 1-4's slices (note 36, C1,
+  is the first slice, each note up the next), as loud as the key is struck; notes on channel 5 play the bass at
+  the key's pitch, held while the key is down.
+
+**New: the important settings by MIDI CC**
+- The channel, mixer, pattern and play settings that matter most each have a MIDI CC, on any channel: CC 2
+  chooses the channel (breaks 1-4 or the bass), 14-26 set its params, 27-31 its level, pan, send, mute and solo,
+  85-90 the tempo and bus (BPM, MASTER, GLUE, DRIVE, VERB, VERB TONE), 102-113 its HIT, ROLL and ALT cells,
+  114-116 the mute scenes and the pattern slot.
+- `docs/MIDI.md` is the MIDI implementation chart.
+**Fix: the black screen on MustardOS, and F1 / F2 on the Brick Pro**
+- The picture is now sent to the screen opaque. Its pixels went out with their alpha (transparency) at 0, which
+  TrimUI OS ignores but MustardOS's display shows, so on MustardOS nothing the app drew was visible.
+- The screen wake now runs on MustardOS (the space in the app's folder, `Columbia Street`, stopped it), and the
+  app makes its renderer again after the wake, and whenever SDL reports the picture lost or drawing fails.
+- F1 and F2 (the two lit buttons under the screen) now play the mute scenes on a Brick Pro under MustardOS,
+  which sends them as buttons 2 and 3.
 
 **New: MustardOS**
 - Packages for MustardOS on the Brick, Brick Hammer and Brick Pro, installed from the Archive Manager. The app

@@ -1,6 +1,7 @@
 /* Pages, controls and drawing. Platform code feeds button edges and time. */
 #pragma once
 #include <stdint.h>
+#include <stdio.h>
 
 enum {
     BTN_UP, BTN_DOWN, BTN_LEFT, BTN_RIGHT,
@@ -31,6 +32,10 @@ int ui_quit_requested(void);
 int ui_take_changed(void);
 int ui_page(void);
 void ui_notice(const char *msg); /* a message on screen (main thread only): USB devices coming and going */
+/* MIDI CC: the important settings, by CC number (any channel); 1 if it was
+ * one. Main thread. ui_midi_chart writes the CC table of the MIDI chart. */
+int ui_midi_cc(int ch, int cc, int v);
+void ui_midi_chart(FILE *f);
 /* the Brick Pro's sticks: a punch-in effect (FX_*) while the right stick is
  * pushed, or -1; and a tap of the tempo (L3) */
 void ui_stick_fx(int fx);
