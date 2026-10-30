@@ -1132,3 +1132,157 @@ void ui_draw_loading(uint32_t *fb, const char *msg)
     gfx_text(270, 230, "STREET", C_ACCENT, FONT_LARGE);
     text_c(SCREEN_W / 2, 300, msg, C_DIM, FONT_SMALL);
 }
+
+/* ---------------------------------------------------------------- MIDI CC */
+
+/* The important channel, mixer, pattern and play settings have a MIDI CC,
+ * all on one channel (any channel is heard). The channel's settings act on
+ * the one CC 2 chooses (1-4 the breaks, 5 the bass). The numbers are ones
+ * MIDI leaves free, in blocks: 14-26 the channel's params (in the order of
+ * its page), 27-31 its mixer strip, 85-90 the tempo and the bus, 102-113
+ * its HIT, ROLL and ALT cells, 114-116 the scenes and the pattern slot.
+ * A CC's 0-127 spans the setting's range; an on / off is on from 64. */
+enum { CCK_CHANNEL, CCK_PARAM, CCK_LEVEL, CCK_PAN, CCK_SEND, CCK_MUTE, CCK_SOLO, CCK_BPM, CCK_MASTER, CCK_GLUE,
+       CCK_DRIVE, CCK_VERB, CCK_VTONE, CCK_CELL, CCK_SCENE, CCK_SLOT };
+typedef struct {
+    unsigned char cc, kind, a, b; /* a, b: the param, or the row and field (0 on, 1 steps, 2 hits, 3 rotate) */
+} CcMap;
+static const CcMap cc_map[] = {
+    {2, CCK_CHANNEL, 0, 0},
+    {14, CCK_PARAM, 0, 0},  {15, CCK_PARAM, 1, 0},  {16, CCK_PARAM, 2, 0},  {17, CCK_PARAM, 3, 0},
+    {18, CCK_PARAM, 4, 0},  {19, CCK_PARAM, 5, 0},  {20, CCK_PARAM, 6, 0},  {21, CCK_PARAM, 7, 0},
+    {22, CCK_PARAM, 8, 0},  {23, CCK_PARAM, 9, 0},  {24, CCK_PARAM, 10, 0}, {25, CCK_PARAM, 11, 0},
+    {26, CCK_PARAM, 12, 0},
+    {27, CCK_LEVEL, 0, 0},  {28, CCK_PAN, 0, 0},    {29, CCK_SEND, 0, 0},   {30, CCK_MUTE, 0, 0},
+    {31, CCK_SOLO, 0, 0},
+    {85, CCK_BPM, 0, 0},    {86, CCK_MASTER, 0, 0}, {87, CCK_GLUE, 0, 0},   {88, CCK_DRIVE, 0, 0},
+    {89, CCK_VERB, 0, 0},   {90, CCK_VTONE, 0, 0},
+    {102, CCK_CELL, ROW_HIT, 0},  {103, CCK_CELL, ROW_HIT, 1},  {104, CCK_CELL, ROW_HIT, 2},
+    {105, CCK_CELL, ROW_HIT, 3},  {106, CCK_CELL, ROW_ROLL, 0}, {107, CCK_CELL, ROW_ROLL, 1},
+    {108, CCK_CELL, ROW_ROLL, 2}, {109, CCK_CELL, ROW_ROLL, 3}, {110, CCK_CELL, ROW_ALT, 0},
+    {111, CCK_CELL, ROW_ALT, 1},  {112, CCK_CELL, ROW_ALT, 2},  {113, CCK_CELL, ROW_ALT, 3},
+    {114, CCK_SCENE, 0, 0}, {115, CCK_SCENE, 1, 0}, {116, CCK_SLOT, 0, 0},
+};
+#define NCC_MAP ((int)(sizeof cc_map / sizeof cc_map[0]))
+static int cc_v; /* the channel the channel CCs act on */
+
+static int cc_scale(int v, int lo, int hi) { return lo + ((hi - lo) * v + 63) / 127; }
+
+int ui_midi_cc(int ch, int cc, int v)
+{
+    (void)ch;
+    const CcMap *m = NULL;
+    for (int i = 0; i < NCC_MAP; i++)
+        if (cc_map[i].cc == cc)
+            m = &cc_map[i];
+    if (!m)
+        return 0;
+    v = clampi(v, 0, 127);
+    int on = v >= 64;
+    ui_lock();
+    switch (m->kind) {
+    case CCK_CHANNEL: {
+        int nv = v * NV / 128;
+        if (nv != cc_v) {
+            cc_v = nv;
+            say("MIDI: %s", voice_names[cc_v]);
+        }
+        break;
+    }
+    case CCK_PARAM:
+        if (m->a < nparam(cc_v) && param_max(cc_v, m->a) > param_min(cc_v, m->a)) {
+            int x = cc_scale(v, param_min(cc_v, m->a), param_max(cc_v, m->a));
+            if (x != song.pat.param[cc_v][m->a])
+                param_set(cc_v, m->a, x);
+        }
+        break;
+    case CCK_LEVEL: song.vol[cc_v] = cc_scale(v, 0, 100); break;
+    case CCK_PAN: song.pan[cc_v] = cc_scale(v, -100, 100); break;
+    case CCK_SEND: song.send[cc_v] = cc_scale(v, 0, 100); break;
+    case CCK_MUTE: song.pat.mute[cc_v] = (uint8_t)on; break;
+    case CCK_SOLO: song.solo[cc_v] = (uint8_t)on; break;
+    case CCK_BPM: song.bpm = (float)cc_scale(v, 40, 250); break;
+    case CCK_MASTER: song.master = cc_scale(v, 0, 100); break;
+    case CCK_GLUE: song.glue = cc_scale(v, 0, 100); break;
+    case CCK_DRIVE: song.master_drive = cc_scale(v, 0, 100); break;
+    case CCK_VERB: song.verb_time = cc_scale(v, 0, 100); break;
+    case CCK_VTONE: song.verb_tone = cc_scale(v, 0, 100); break;
+    case CCK_CELL: {
+        Cell *c = &song.pat.cell[cc_v][m->a];
+        switch (m->b) {
+        case 0: c->on = (uint8_t)on; break;
+        case 1: c->steps = (uint8_t)cc_scale(v, 1, MAX_STEPS); break;
+        case 2: c->hits = (uint8_t)cc_scale(v, 0, c->steps); break;
+        case 3: c->rot = (uint8_t)cc_scale(v, 0, c->steps - 1); break;
+        }
+        if (c->hits > c->steps)
+            c->hits = c->steps;
+        c->rot %= c->steps;
+        break;
+    }
+    case CCK_SCENE:
+        if (on != (scene_on == m->a))
+            scene_toggle(m->a);
+        break;
+    case CCK_SLOT: {
+        int i = v * NSLOT / 128;
+        if (song.slot_used[i] && i != live.cur_slot && i != live.queued_slot) {
+            slot_load(i);
+            say(live.playing ? "%c AT THE NEXT BAR" : "LOADED %c", 'A' + i);
+        }
+        break;
+    }
+    }
+    changed = 1;
+    ui_unlock();
+    return 1;
+}
+
+/* the implementation chart's CC table, as Markdown */
+void ui_midi_chart(FILE *f)
+{
+    static const char *const names[] = {"CHANNEL: the one the channel CCs act on", "", "Channel LEVEL",
+                                        "Channel PAN", "Channel SEND (reverb)", "Channel MUTE", "Channel SOLO",
+                                        "BPM", "MASTER", "GLUE", "DRIVE", "VERB (reverb time)", "VERB TONE", "",
+                                        "Scene", "Pattern SLOT"};
+    static const char *const rows[NROW] = {"HIT", "ROLL", "ALT"}, *const fields[4] = {"ON", "STEPS", "HITS", "ROTATE"};
+    fprintf(f, "| CC | Setting | Range |\n|---|---|---|\n");
+    for (int i = 0; i < NCC_MAP; i++) {
+        const CcMap *m = &cc_map[i];
+        switch (m->kind) {
+        case CCK_CHANNEL:
+            fprintf(f, "| %d | %s | 0-25 BREAK 1, 26-50 BREAK 2, 51-76 BREAK 3, 77-101 BREAK 4, 102-127 BASS |\n",
+                    m->cc, names[m->kind]);
+            break;
+        case CCK_PARAM: {
+            /* a range of 0 to 0 is one that depends on what is loaded */
+            char rb[48], rs[48];
+            const ParamDef *b = param_def(0, m->a), *s = param_def(V_BASS, m->a);
+            if (b->max > b->min)
+                snprintf(rb, sizeof rb, "%s %d to %d", b->name, b->min, b->max);
+            else
+                snprintf(rb, sizeof rb, "%s (what is loaded)", b->name);
+            if (m->a >= nparam(V_BASS))
+                snprintf(rs, sizeof rs, "nothing");
+            else if (s->max > s->min)
+                snprintf(rs, sizeof rs, "%s %d to %d", s->name, s->min, s->max);
+            else
+                snprintf(rs, sizeof rs, "%s (what is loaded)", s->name);
+            fprintf(f, "| %d | Channel param %d | breaks: %s; bass: %s |\n", m->cc, m->a + 1, rb, rs);
+            break;
+        }
+        case CCK_MUTE:
+        case CCK_SOLO: fprintf(f, "| %d | %s | 0-63 off, 64-127 on |\n", m->cc, names[m->kind]); break;
+        case CCK_PAN: fprintf(f, "| %d | %s | -100 to 100 |\n", m->cc, names[m->kind]); break;
+        case CCK_BPM: fprintf(f, "| %d | %s | 40 to 250 |\n", m->cc, names[m->kind]); break;
+        case CCK_CELL:
+            fprintf(f, "| %d | Channel %s cell %s | %s |\n", m->cc, rows[m->a], fields[m->b],
+                    m->b == 0 ? "0-63 off, 64-127 on" : m->b == 1 ? "1 to 32" : m->b == 2 ? "0 to its steps"
+                                                                                       : "0 to its steps - 1");
+            break;
+        case CCK_SCENE: fprintf(f, "| %d | %s M%d | 0-63 off, 64-127 on (if saved) |\n", m->cc, names[m->kind], m->a + 1); break;
+        case CCK_SLOT: fprintf(f, "| %d | %s | 0-15 A, 16-31 B ... 112-127 H (saved slots; at the next bar while playing) |\n", m->cc, names[m->kind]); break;
+        default: fprintf(f, "| %d | %s | 0 to 100 |\n", m->cc, names[m->kind]); break;
+        }
+    }
+}

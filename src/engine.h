@@ -130,6 +130,9 @@ int nsweep(void);
 void engine_init(int sample_rate);
 void engine_render(int16_t *out, int frames);
 void engine_audition(int v);
+/* a MIDI note for channel ch (0-3 a break's slices, 4 the bass), velocity 0
+ * a note off; any thread. Played at the start of the next block. */
+void engine_note(int ch, int note, int vel);
 void engine_set_playing(int on);
 /* transport position in 16th steps with fraction, a hard jump, and a
  * playback speed trim for the Wi-Fi sync (1.0 = none); all under the lock */
