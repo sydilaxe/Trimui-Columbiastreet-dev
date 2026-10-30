@@ -169,9 +169,32 @@ static int data_len(uint8_t st)
     }
 }
 
+/* CCs, for the main thread (ui_midi_cc): one writer (the MIDI thread), one
+ * reader */
+#define CCQ 256
+static volatile uint32_t ccq[CCQ];
+static volatile unsigned ccq_w, ccq_r;
+
+int midi_take_cc(int *ch, int *cc, int *v)
+{
+    if (ccq_r == ccq_w)
+        return 0;
+    __sync_synchronize();
+    uint32_t m = ccq[ccq_r % CCQ];
+    __sync_synchronize();
+    ccq_r++;
+    *ch = (int)(m >> 16 & 15), *cc = (int)(m >> 8 & 127), *v = (int)(m & 127);
+    return 1;
+}
+
 static void message(uint64_t t)
 {
     (void)t;
+    if ((status & 0xf0) == 0xb0 && ccq_w - ccq_r < CCQ) {
+        ccq[ccq_w % CCQ] = (uint32_t)(status & 15) << 16 | (uint32_t)(data[0] & 127) << 8 | (uint32_t)(data[1] & 127);
+        __sync_synchronize();
+        ccq_w++;
+    }
     if (status == 0xf2 && follow) { /* song position, in 16ths */
         ticks = (int64_t)((data[1] << 7) | data[0]) * 6;
         if (live.playing)
@@ -233,6 +256,7 @@ void midi_reset(void)
     ticks = 0;
     following = ext_running = settle = 0;
     status = 0, ndata = 0, in_sysex = 0;
+    ccq_r = ccq_w;
     out_running = 0;
 }
 

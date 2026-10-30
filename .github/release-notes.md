@@ -20,6 +20,13 @@ OS, add `CS_DEVICE=brickpro` before `bash` the first time on a Brick Pro):
 curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/main/install.sh | bash
 ```
 
+**New: the important settings by MIDI CC**
+- The channel, mixer, pattern and play settings that matter most each have a MIDI CC, on any channel: CC 2
+  chooses the channel (breaks 1-4 or the bass), 14-26 set its params, 27-31 its level, pan, send, mute and solo,
+  85-90 the tempo and bus (BPM, MASTER, GLUE, DRIVE, VERB, VERB TONE), 102-113 its HIT, ROLL and ALT cells,
+  114-116 the mute scenes and the pattern slot.
+- `docs/MIDI.md` is the MIDI implementation chart.
+
 **New: MustardOS**
 - Packages for MustardOS on the Brick, Brick Hammer and Brick Pro, installed from the Archive Manager. The app
   reads MustardOS's controller, so every button (and the Brick Pro's sticks) works as on TrimUI OS, and it

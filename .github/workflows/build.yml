@@ -130,6 +130,10 @@ jobs:
           grep -q "^update prompt: shown 1, A installs 1, B closes it 1, pattern untouched 1" $r
           # USB MIDI clock and the Brick Pro's sticks
           grep -q "^midi clock in: START plays 1 from the first step 1, 120 BPM -> .* (1), phase within .* (want under 0.1: 1), STOP stops 1" $r
+          grep -q "^midi cc: .*CC7 not ours: 1$" $r
+          # the MIDI chart's CC table is the one the app uses
+          build/cs_test --midi-chart > cc.md
+          sed -n '/<!-- cc table -->/,/<!-- end cc table -->/p' docs/MIDI.md | sed '1d;$d' | diff cc.md -
           grep -q "^midi clock out: START 1, .*(want 192: 1), STOP 1" $r
           grep -q "^stick: .*(darker: 1), .*(open again: 1); fx: stick 1, R2 first 1, back 1, off 1" $r
       - name: Self-update against a local fake GitHub

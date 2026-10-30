@@ -284,6 +284,11 @@ static void sim_sync(int echo, double *mean_ms, double *worst_ms, float *delay)
 
 int main(int argc, char **argv)
 {
+    if (argc > 1 && !strcmp(argv[1], "--midi-chart")) { /* the CC table of docs/MIDI.md */
+        song_default();
+        ui_midi_chart(stdout);
+        return 0;
+    }
     const char *out = argc > 1 ? argv[1] : "build/test";
     const char *app = argc > 2 ? argv[2] : "dist/ColumbiaStreet";
     char path[512];
@@ -861,6 +866,32 @@ int main(int argc, char **argv)
         printf("midi clock in: START plays %d from the first step %d, 120 BPM -> %.1f (%d), "
                "phase within %.3f steps (want under 0.1: %d), STOP stops %d\n",
                started, first, bpm_in, fabsf(bpm_in - 120.f) < 0.5f && following, worst, worst < 0.1, !live.playing);
+
+        { /* MIDI CC: the bass chosen, its cutoff, its HIT cell, the tempo, a mute */
+            song_default();
+            midi_reset();
+            uint8_t m[3] = {0xb9, 2, 127}; /* channel 10: any channel is heard */
+            int mch, mcc, mv, n = 0;
+            midi_feed(m, 3, 1000);
+            m[1] = 14 + S_CUT, m[2] = 0;
+            midi_feed(m, 3, 2000);
+            m[1] = 103, m[2] = 127; /* HIT steps: 32 */
+            midi_feed(m, 3, 3000);
+            m[1] = 85, m[2] = 127;  /* BPM: 250 */
+            midi_feed(m, 3, 4000);
+            m[1] = 30, m[2] = 127;  /* muted */
+            midi_feed(m, 3, 5000);
+            m[1] = 7, m[2] = 100;   /* not one of ours */
+            midi_feed(m, 3, 6000);
+            while (midi_take_cc(&mch, &mcc, &mv))
+                n += ui_midi_cc(mch, mcc, mv);
+            int ok = n == 5 && song.pat.param[V_BASS][S_CUT] == 0 && song.pat.param[0][S_CUT] != 0 &&
+                     song.pat.cell[V_BASS][ROW_HIT].steps == MAX_STEPS && song.bpm == 250.f &&
+                     song.pat.mute[V_BASS] && !song.pat.mute[0];
+            printf("midi cc: bass chosen, its cutoff 0, HIT 32 steps, BPM 250, muted, CC7 not ours: %d\n", ok);
+            song_default();
+            midi_reset();
+        }
 
         song_default();
         song.bpm = 120.f;
