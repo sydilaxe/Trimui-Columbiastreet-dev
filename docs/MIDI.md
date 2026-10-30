@@ -2,7 +2,7 @@
 
 Columbia Street reads and sends MIDI over USB: plug a class-compliant drum machine, sequencer, controller or
 interface into the TrimUI's USB host port (the Brick's top USB-C, through an OTG adapter or hub). Ports are found as
-they are plugged in.
+they are plugged in. Everything below works from any page.
 
 ## Summary
 
