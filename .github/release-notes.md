@@ -20,6 +20,11 @@ OS, add `CS_DEVICE=brickpro` before `bash` the first time on a Brick Pro):
 curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/main/install.sh | bash
 ```
 
+**New: the Brick Pro's LEDs, each on its own**
+- Both stick rings light (only the left one did): each points where its stick is pushed, the right one in the
+  colour of the effect that way.
+- The top bar is a stereo level meter of the sound; the L1, L2, R1 and R2 LEDs keep the tempo.
+
 **New: logs to find clicks and tune the app**
 - `log.txt` adds the performance log the other TrimUI apps have: a **STAT** line every 10 s (audio load,
   dropouts, late calls, clicks, the screen, the processor) and a **PROC** line (cpu by thread, memory, faults, how

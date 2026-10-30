@@ -25,6 +25,25 @@ static const uint32_t chan_col[NV] = {0xff5a46, 0xffb428, 0x5adc8c, 0x46b4ff, 0x
 #define COL_BEAT 0xb4b4b4  /* the other beats */
 #define COL_CLIP 0xff0000
 
+/* the Brick Pro, LED by LED (frame_hex): its 23 LEDs, as mapped on a Brick
+ * Pro: 1-8 the top bar left to right, 9 F2, 10 F1, 11-14 the left ring and
+ * 15-18 the right ring (each upper left, lower left, lower right, upper
+ * right), 19 L1, 20 L2, 21 R2, 22 R1 */
+#define NFRAME 23
+#define F_BAR 0
+#define F_F2 8
+#define F_F1 9
+#define F_RING_L 10
+#define F_RING_R 14
+#define F_SHOULDER 18
+static int frame_mode;
+static uint32_t want_frame[NFRAME], written_frame[NFRAME];
+static int frame_written;
+static volatile uint32_t out_peak[2];
+static float stk[4]; /* lx, ly, rx, ry (y up) */
+#define COL_FILTER 0x46b4ff
+static const uint32_t fx_col[4] = {0xff6414, 0xffb428, 0xb478ff, 0xff2030}; /* repeat 1/8, 1/16, reverse, tape stop */
+
 static char dir[256] = "/sys/class/led_anim";
 static int on;
 static pthread_t thread;
@@ -75,8 +94,29 @@ static void write_zone(int z, uint32_t c)
     put(name, "4\n");
 }
 
+static void flush_frame(void)
+{
+    uint32_t f[NFRAME];
+    pthread_mutex_lock(&mx);
+    memcpy(f, want_frame, sizeof f);
+    pthread_mutex_unlock(&mx);
+    if (frame_written && !memcmp(f, written_frame, sizeof f))
+        return;
+    char v[NFRAME * 7 + 2];
+    for (int i = 0; i < NFRAME; i++)
+        snprintf(v + i * 7, 8, "%06X ", (unsigned)(f[i] & 0xffffff));
+    strcat(v, "\n");
+    put("frame_hex", v);
+    memcpy(written_frame, f, sizeof f);
+    frame_written = 1;
+}
+
 void leds_flush(void)
 {
+    if (frame_mode) {
+        flush_frame();
+        return;
+    }
     uint32_t w[NZONE];
     pthread_mutex_lock(&mx);
     memcpy(w, want, sizeof w);
@@ -156,7 +196,18 @@ int leds_start(void)
     snprintf(v, sizeof v, "%d\n", LED_SCALE);
     for (int i = 0; i < NSCALE; i++)
         put(scale_name[i], v);
-    put("effect_enable", "1\n");
+    {
+        const char *fm = getenv("CS_LED_FRAME");
+        snprintf(p, sizeof p, "%s/frame_hex", dir);
+#ifdef CS_BRICKPRO
+        frame_mode = access(p, W_OK) == 0 && !(fm && *fm == '0');
+#else
+        frame_mode = fm && *fm == '1' && access(p, W_OK) == 0; /* the Brick: only on request (tests) */
+#endif
+    }
+    put("effect_enable", frame_mode ? "0\n" : "1\n"); /* the frame shows while the named effects are off */
+    memset(want_frame, 0, sizeof want_frame);
+    frame_written = 0;
     for (int z = 0; z < NZONE; z++) {
         char name[32];
         snprintf(name, sizeof name, "effect_cycles_%s", zone_name[z]);
@@ -180,6 +231,14 @@ void leds_stop(void)
     if (running) {
         running = 0;
         pthread_join(thread, NULL);
+    }
+    if (frame_mode) { /* dark, then the named effects started again below */
+        char v[NFRAME * 7 + 2];
+        for (int i = 0; i < NFRAME; i++)
+            memcpy(v + i * 7, "000000 ", 7);
+        v[NFRAME * 7] = '\n', v[NFRAME * 7 + 1] = 0;
+        put("frame_hex", v);
+        frame_mode = 0;
     }
     /* back as they were: colour, then effect (which shows it), brightness */
     for (int z = 0; z < NZONE; z++) {
@@ -213,6 +272,52 @@ static uint64_t ms_now(void)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
+
+/* a colour at an intensity 0..1, on a curve so that halfway looks about half as bright, in eighths */
+static uint32_t glow(uint32_t c, float t)
+{
+    t = t < 0.f ? 0.f : t > 1.f ? 1.f : t;
+    return scale(c, powf(floorf(t * 8.f + 0.5f) / 8.f, 1.8f));
+}
+
+/* a ring's four corners (upper left, lower left, lower right, upper right) lit toward where the stick points */
+static void ring(float x, float y, uint32_t c, uint32_t *out)
+{
+    static const float cx[4] = {-1.f, -1.f, 1.f, 1.f}, cy[4] = {1.f, -1.f, -1.f, 1.f};
+    for (int k = 0; k < 4; k++)
+        out[k] = glow(c, x * cx[k] + y * cy[k]);
+}
+
+/* the top bar: each channel's level from the centre out over -42 .. 0 dB, green, then amber and red */
+static void meter(float l, float r, uint32_t *bar)
+{
+    static const uint32_t col[4] = {0x20d040, 0x20d040, 0xffb020, 0xff2010};
+    float lv[2] = {l, r};
+    for (int c = 0; c < 2; c++) {
+        float db = lv[c] > 1e-6f ? 20.f * log10f(lv[c]) : -120.f, lit = (db + 42.f) / 42.f * 4.f;
+        for (int k = 0; k < 4; k++)
+            bar[c ? 4 + k : 3 - k] = glow(col[k], lit - k);
+    }
+}
+
+static void frame_compose(uint32_t *f, uint32_t f1, uint32_t f2, uint32_t beat_col, float beat_k)
+{
+    f[F_F1] = f1, f[F_F2] = f2;
+    static float lev[2];
+    for (int c = 0; c < 2; c++) { /* falls back over about a third of a second (called every ~33 ms) */
+        float p = __atomic_exchange_n(&out_peak[c], 0, __ATOMIC_RELAXED) / 32000.f;
+        lev[c] = p > lev[c] ? p : lev[c] * 0.82f;
+    }
+    meter(lev[0], lev[1], f + F_BAR);
+    for (int k = 0; k < 4; k++)
+        f[F_SHOULDER + k] = scale(beat_col, beat_k);
+    ring(stk[0], stk[1], COL_FILTER, f + F_RING_L);
+    /* the right ring in the colour of the effect the stick points to: up repeat 1/8, right 1/16, left
+     * reverse, down tape stop */
+    float rx = stk[2], ry = stk[3];
+    int fx = fabsf(ry) >= fabsf(rx) ? (ry > 0.f ? FX_REPEAT8 : FX_TAPESTOP) : (rx > 0.f ? FX_REPEAT16 : FX_REVERSE);
+    ring(rx, ry, fx_col[fx], f + F_RING_R);
 }
 
 void leds_update(int scene_on)
@@ -251,7 +356,30 @@ void leds_update(int scene_on)
     else
         w[Z_LR] = scale(chan_col[loud], floorf(fminf(1.f, lvl * 1.25f) * 8.f + 0.5f) / 8.f);
 
+    uint32_t f[NFRAME] = {0};
+    if (frame_mode)
+        frame_compose(f, w[Z_F1], w[Z_F2], bar_beat ? COL_BAR : COL_BEAT, k);
     pthread_mutex_lock(&mx);
     memcpy(want, w, sizeof want);
+    memcpy(want_frame, f, sizeof want_frame);
     pthread_mutex_unlock(&mx);
+}
+
+void leds_sticks(float lx, float ly, float rx, float ry) { stk[0] = lx, stk[1] = ly, stk[2] = rx, stk[3] = ry; }
+
+void leds_audio(const short *s, int frames)
+{
+    int m[2] = {0, 0};
+    for (int i = 0; i < frames; i++)
+        for (int c = 0; c < 2; c++) {
+            int a = s[i * 2 + c] < 0 ? -s[i * 2 + c] : s[i * 2 + c];
+            if (a > m[c])
+                m[c] = a;
+        }
+    for (int c = 0; c < 2; c++) {
+        uint32_t want_p = (uint32_t)m[c], was = __atomic_load_n(&out_peak[c], __ATOMIC_RELAXED);
+        while (want_p > was &&
+               !__atomic_compare_exchange_n(&out_peak[c], &was, want_p, 1, __ATOMIC_RELAXED, __ATOMIC_RELAXED))
+            ;
+    }
 }
