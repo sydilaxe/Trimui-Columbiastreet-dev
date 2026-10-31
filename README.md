@@ -228,7 +228,7 @@ you flip it.
 
 R2 + the d-pad wins over the right stick while both are held.
 
-**Half time** is the HOME key on the left, under the volume keys (MustardOS's button 4). It
+**Half time** is the HOME key on the left, under the volume keys (MustardOS's button 2). It
 halves the tempo (a 1/2 badge in the header); a second press brings back the tempo it was, or
 doubles a tempo changed meanwhile. The song is saved at the full tempo. On another firmware,
 `CS_JOYMAP=HALF=n` in `launch.sh` puts it on button n (`log.txt` names the buttons it doesn't use).
