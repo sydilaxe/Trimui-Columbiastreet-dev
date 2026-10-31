@@ -43,6 +43,8 @@ static int held[BTN_COUNT], hold_ms[BTN_COUNT], rep_ms[BTN_COUNT], rep_n[BTN_COU
 static int b_used; /* B was a modifier this press (PATTERN page) */
 static int fx_order[4], fx_norder;
 static int stick_fx = -1; /* the Brick Pro's right stick, or -1 */
+static int half_on;            /* half time: song.bpm is half of half_from */
+static float half_from, half_to; /* the tempo before, and the one it became */
 static int left_groove = -1; /* the side switch: 1 GROOVE, 0 FILTER, -1 not read */
 static uint32_t now_ms;
 static uint32_t taps[6];
@@ -168,6 +170,34 @@ void ui_stick_fx(int fx)
     stick_fx = fx;
     update_fx();
     ui_unlock();
+}
+
+void ui_half_time(void)
+{
+    if (upd_open)
+        return;
+    ui_lock();
+    if (!half_on) {
+        half_from = song.bpm;
+        song.bpm = fmaxf(40.f, roundf(song.bpm * 5.f) / 10.f);
+        half_to = song.bpm;
+        half_on = 1;
+        say("HALF TIME  %.1f BPM", song.bpm);
+    }
+    else {
+        /* the tempo it was, unless it was changed in half time: then double that */
+        song.bpm = song.bpm == half_to ? half_from : fminf(250.f, song.bpm * 2.f);
+        half_on = 0;
+        say("FULL TIME  %.1f BPM", song.bpm);
+    }
+    ui_unlock();
+}
+
+float ui_full_bpm(void)
+{
+    if (!half_on)
+        return song.bpm;
+    return song.bpm == half_to ? half_from : fminf(250.f, song.bpm * 2.f);
 }
 
 void ui_left_mode(int groove, const char *msg)
@@ -681,6 +711,8 @@ static void draw_header(void)
             badge(&bx, m, scene_on == k ? C_MUTE : C_PANEL2, scene_on == k ? 0x000000 : C_DIM);
         }
     /* the side switch up: the groove plays */
+    if (half_on)
+        badge(&bx, "1/2", 0x46b4ff, 0x000000);
     if (left_groove == 1)
         badge(&bx, "GRV", 0x7ad87a, 0x000000);
     if (song.sync_mode != SYNC_OFF) {

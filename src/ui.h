@@ -40,6 +40,11 @@ void ui_midi_chart(FILE *f);
  * pushed, or -1; and a tap of the tempo (L3) */
 void ui_stick_fx(int fx);
 void ui_tap_tempo(void);
+/* half time: the tempo halved on one press, back to what it was on the next
+ * (the HOME key on the Brick Pro under MustardOS); ui_full_bpm is the tempo
+ * to save, the full one while half time is on */
+void ui_half_time(void);
+float ui_full_bpm(void);
 /* the side switch: what the left stick plays (1 the groove, 0 the filter),
  * shown in the header; msg, if not NULL, on screen for a moment */
 void ui_left_mode(int groove, const char *msg);
