@@ -93,7 +93,9 @@ int update_check(void)
     char *body = NULL, tag[sizeof us.latest] = "", url[sizeof us.url], err[128];
     set_state(UP_CHECKING);
     if (http_fetch(api ? api : API_LATEST, &body, 1L << 20, err, sizeof err) < 0) {
-        snprintf(us.err, sizeof us.err, "update check: %s", err);
+        /* GitHub answers 404 for a private repo as for a missing one */
+        snprintf(us.err, sizeof us.err, "update check: %s%s", err,
+                 strstr(err, " 404") ? " (" CS_REPO " private, or not there?)" : "");
         set_state(UP_CHECK_FAILED);
         return -1;
     }

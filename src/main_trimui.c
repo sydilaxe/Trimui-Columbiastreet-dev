@@ -9,6 +9,8 @@
  * the self-updater fetch the Brick Pro's zip). */
 #define _GNU_SOURCE
 #include <SDL2/SDL.h>
+#include <fcntl.h>
+#include <malloc.h>
 #include <math.h>
 #include <pthread.h>
 #include <signal.h>
@@ -364,11 +366,18 @@ static void on_trigger(int which, int value)
     }
 }
 
+/* the side switch (above the power button) up: the groove, see switch_open */
+static int groove_mode;
+
 #ifdef CS_BRICKPRO
 /* The Brick Pro's sticks: live performance, springing back when let go;
  * nothing they do is saved.
- *   left stick   pushed any way: the L2 low-pass, closed by hand, darker the
- *                further it goes; let go, it opens again
+ *   left stick   with the side switch down (FILTER), pushed any way: the L2
+ *                low-pass, closed by hand, darker the further it goes; let
+ *                go, it opens again. With the switch up (GROOVE): up locks
+ *                the Euclidean cells toward breakbeat patterns, down toward
+ *                the clave family, right adds ghost notes after the hits,
+ *                left before them; the further, the more
  *   right stick  the punch-in effects, as R2 + the d-pad: up repeats the
  *                last 1/8, right the last 1/16, left reverses, down stops
  *                the tape
@@ -391,7 +400,16 @@ static void sticks_apply(void)
     float lx = stick[AX_LX], ly = stick[AX_LY];
     float amount = sqrtf(lx * lx + ly * ly);
     ui_lock();
-    live.sweep_hand = amount > 1.f ? 1.f : amount;
+    if (groove_mode) {
+        /* squared, so the first part of the travel is the slight variations */
+        live.sweep_hand = 0.f;
+        live.groove_lock = -ly * fabsf(ly); /* up is negative from SDL */
+        live.groove_ghost = lx * fabsf(lx);
+    }
+    else {
+        live.sweep_hand = amount > 1.f ? 1.f : amount;
+        live.groove_lock = live.groove_ghost = 0.f;
+    }
     ui_unlock();
     /* the right stick: the way it is pushed furthest, engaged past 60%,
      * let go below 40% */
@@ -409,6 +427,97 @@ static void sticks_apply(void)
     leds_sticks(lx, -ly, rx, -ry); /* the rings point where the sticks do (up is negative from SDL) */
 }
 #endif
+
+/* The side switch, above the power button (TrimUI's FN switch). Up (GROOVE):
+ * on the Brick Pro the left stick plays the groove instead of the filter; on
+ * the Brick, which has no sticks, a set amount of the groove plays (the cells
+ * half locked to the breakbeat patterns, a few ghost notes after the hits).
+ * Down (FILTER): as before. It is GPIO 243 (0 up, 1 down on the Brick Pro
+ * under MustardOS), read as NextUI reads it; if no
+ * one has exported it, it is exported here and given back at quit.
+ * CS_SWITCH=0 leaves it alone, CS_SWITCH=/path reads another file holding 0
+ * or 1, CS_SWITCH_FLIP=1 swaps the two positions. */
+#define SWITCH_GPIO "243"
+#define SWITCH_PATH "/sys/class/gpio/gpio" SWITCH_GPIO "/value"
+#ifndef CS_BRICKPRO
+#define BRICK_GROOVE_LOCK 0.5f
+#define BRICK_GROOVE_GHOST 0.35f
+#endif
+static int sw_fd = -1, sw_exported, sw_state = -1, sw_flip;
+
+static int write_sys(const char *path, const char *text)
+{
+    int fd = open(path, O_WRONLY | O_CLOEXEC);
+    if (fd < 0)
+        return 0;
+    int ok = write(fd, text, strlen(text)) == (ssize_t)strlen(text);
+    close(fd);
+    return ok;
+}
+
+static void switch_open(void)
+{
+    const char *want = getenv("CS_SWITCH");
+    if (want && !strcmp(want, "0")) {
+        fprintf(stderr, "switch: not read (CS_SWITCH=0)\n");
+        return;
+    }
+    const char *path = want && *want ? want : SWITCH_PATH;
+    sw_fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (sw_fd < 0 && !(want && *want) && write_sys("/sys/class/gpio/export", SWITCH_GPIO)) {
+        sw_exported = 1;
+        write_sys("/sys/class/gpio/gpio" SWITCH_GPIO "/direction", "in");
+        sw_fd = open(path, O_RDONLY | O_CLOEXEC);
+    }
+    sw_flip = env_int("CS_SWITCH_FLIP", 0);
+    if (sw_fd < 0)
+        fprintf(stderr, "switch: %s not found, the left stick stays on the filter (CS_SWITCH=/path names another)\n",
+                path);
+    else
+        fprintf(stderr, "switch: %s%s%s\n", path, sw_exported ? " (exported here)" : "",
+                sw_flip ? ", positions swapped" : "");
+}
+
+static void switch_close(void)
+{
+    if (sw_fd >= 0)
+        close(sw_fd);
+    sw_fd = -1;
+    if (sw_exported)
+        write_sys("/sys/class/gpio/unexport", SWITCH_GPIO);
+}
+
+static void groove_apply(void)
+{
+#ifdef CS_BRICKPRO
+    sticks_apply();
+#else
+    ui_lock();
+    live.groove_lock = groove_mode ? BRICK_GROOVE_LOCK : 0.f;
+    live.groove_ghost = groove_mode ? BRICK_GROOVE_GHOST : 0.f;
+    ui_unlock();
+#endif
+}
+
+/* a few times a second, from the main loop */
+static void switch_poll(void)
+{
+    char c[4];
+    if (sw_fd < 0 || pread(sw_fd, c, sizeof c, 0) < 1 || (c[0] != '0' && c[0] != '1'))
+        return;
+    int s = (c[0] == '0') ^ sw_flip; /* 0 is up */
+    if (s == sw_state)
+        return;
+    int first = sw_state < 0;
+    sw_state = groove_mode = s;
+    fprintf(stderr, "switch: %s (the left stick plays the %s)\n", s ? "up" : "down", s ? "groove" : "filter");
+#ifdef CS_BRICKPRO
+    ui_left_mode(s, first ? NULL : s ? "LEFT STICK: GROOVE" : "LEFT STICK: FILTER");
+#else
+    ui_left_mode(s, first && !s ? NULL : s ? "GROOVE ON" : "GROOVE OFF");
+#endif
+    groove_apply();
+}
 
 static void open_joysticks(void)
 {
@@ -689,6 +798,13 @@ int main(int argc, char **argv)
 
     /* 1 GB: the whole program and its samples stay in memory, so the sound
      * never waits for a page to be read back in */
+    /* and big blocks come from the heap and stay there: log.txt showed a
+     * frame's worth (1.2 MB) of fresh pages every frame, each allocated,
+     * locked and given back again (CS_MALLOC_KEEP=0: glibc's own way) */
+    if (env_int("CS_MALLOC_KEEP", 1)) {
+        mallopt(M_MMAP_THRESHOLD, 32 << 20);
+        mallopt(M_TRIM_THRESHOLD, 64 << 20);
+    }
     if (env_int("CS_MLOCK", 1) && mlockall(MCL_CURRENT | MCL_FUTURE) != 0)
         fprintf(stderr, "could not lock memory\n");
 
@@ -762,6 +878,7 @@ int main(int argc, char **argv)
 
     joy_map_default();
     open_joysticks();
+    switch_open();
 
     int have_audio = open_output(pick_output(), 0);
     if (have_audio) {
@@ -818,6 +935,9 @@ int main(int argc, char **argv)
             continue;
         }
         sync_poll(now_us());
+        static int sw_frame;
+        if (sw_frame++ % 3 == 0) /* the side switch, 10 times a second */
+            switch_poll();
         if (update_auto)
             update_watch(now, &update_next, &update_tries);
         if (update_status()->state == UP_INSTALLED && !relaunch_at) {
@@ -844,6 +964,7 @@ int main(int argc, char **argv)
     }
 
     song_save(SAVE_PATH);
+    switch_close();
     leds_stop();
     midi_stop();
     sync_close();

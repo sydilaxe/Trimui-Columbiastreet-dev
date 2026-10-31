@@ -43,6 +43,7 @@ static int held[BTN_COUNT], hold_ms[BTN_COUNT], rep_ms[BTN_COUNT], rep_n[BTN_COU
 static int b_used; /* B was a modifier this press (PATTERN page) */
 static int fx_order[4], fx_norder;
 static int stick_fx = -1; /* the Brick Pro's right stick, or -1 */
+static int left_groove = -1; /* the side switch: 1 GROOVE, 0 FILTER, -1 not read */
 static uint32_t now_ms;
 static uint32_t taps[6];
 static int ntaps;
@@ -167,6 +168,13 @@ void ui_stick_fx(int fx)
     stick_fx = fx;
     update_fx();
     ui_unlock();
+}
+
+void ui_left_mode(int groove, const char *msg)
+{
+    left_groove = groove;
+    if (msg)
+        say("%s", msg);
 }
 
 void ui_tap_tempo(void)
@@ -672,6 +680,9 @@ static void draw_header(void)
             snprintf(m, sizeof m, "M%d", k + 1);
             badge(&bx, m, scene_on == k ? C_MUTE : C_PANEL2, scene_on == k ? 0x000000 : C_DIM);
         }
+    /* the side switch up: the groove plays */
+    if (left_groove == 1)
+        badge(&bx, "GRV", 0x7ad87a, 0x000000);
     if (song.sync_mode != SYNC_OFF) {
         const SyncStatus *ss = sync_status();
         int linked = ss->leading || ss->have_leader;

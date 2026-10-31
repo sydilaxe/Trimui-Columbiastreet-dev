@@ -1109,6 +1109,77 @@ int main(int argc, char **argv)
                100.0 * hf[1] / hf[0], hf[1] < 0.2 * hf[0], 100.0 * hf[2] / hf[0], hf[2] > 0.5 * hf[0], fx_stick, fx_r2,
                fx_back, fx_off);
     }
+    /* ---- the groove (the side switch up): the lock pulls each channel's HIT
+     * cell to a traditional rhythm, so at full every bar is the same; part
+     * way it changes some steps; ghost notes land on empty 16ths next to a
+     * hit; and at rest nothing changes (session.wav is the same sound) */
+    {
+        song_default();
+        engine_init(RATE);
+        int same_full = 1, active = 0, changed_part = 0, changed_full = 0, steps = 0, clave_differs = 0;
+        for (int v = 0; v < NV; v++) {
+            const Cell *c = &song.pat.cell[v][ROW_HIT];
+            if (!c->on || c->hits < 1)
+                continue;
+            active++;
+            for (int s = 0; s < 64; s++) {
+                live.groove_lock = 0.f;
+                int base = groove_flags(v, s) != 0;
+                live.groove_lock = 0.3f;
+                changed_part += (groove_flags(v, s) != 0) != base;
+                live.groove_lock = 1.f;
+                int full = groove_flags(v, s) != 0;
+                changed_full += full != base;
+                live.groove_lock = -1.f;
+                clave_differs += (groove_flags(v, s) != 0) != full;
+                live.groove_lock = 1.f;
+                if (s >= 16 && full != (groove_flags(v, s - 16) != 0))
+                    same_full = 0;
+                steps++;
+            }
+        }
+        live.groove_lock = 0.f;
+        int ghosts = 0, ghost_bad = 0;
+        for (int dir = -1; dir <= 1; dir += 2) {
+            live.groove_ghost = (float)dir;
+            for (int v = 0; v < NBRK; v++)
+                for (int s = 1; s < 64; s++)
+                    if (groove_ghost_at(v, s)) {
+                        ghosts++;
+                        ghost_bad += groove_flags(v, s) != 0 || !groove_flags(v, dir > 0 ? s - 1 : s + 1);
+                    }
+        }
+        /* and they sound: more hits in 4 s with the ghosts than without */
+        uint32_t hits[2];
+        for (int k = 0; k < 2; k++) {
+            engine_init(RATE);
+            live.groove_ghost = k ? 1.f : 0.f;
+            uint32_t t0 = 0;
+            for (int v = 0; v < NBRK; v++)
+                t0 += live.trig_count[v];
+            engine_set_playing(1);
+            static float buf[RATE];
+            for (int i = 0; i < 4; i++)
+                render_mono(buf, RATE);
+            engine_set_playing(0);
+            hits[k] = 0;
+            for (int v = 0; v < NBRK; v++)
+                hits[k] += live.trig_count[v];
+            hits[k] -= t0;
+        }
+        live.groove_ghost = 0.f;
+        ui_left_mode(1, "LEFT STICK: GROOVE");
+        ui_draw(fb);
+        char path[512];
+        snprintf(path, sizeof path, "%s/groove.ppm", out);
+        write_ppm(path, fb);
+        ui_left_mode(0, NULL);
+        printf("groove: %d channels, %d steps; lock 0.3 changes %d, full %d, bars repeat at full %d, clave differs %d; "
+               "ghosts %d, on an empty 16th by a hit %d, heard %u -> %u (want 1 1 1: %d)\n",
+               active, steps, changed_part, changed_full, same_full, clave_differs, ghosts, !ghost_bad, hits[0],
+               hits[1], same_full && changed_part > 0 && changed_part < changed_full && clave_differs > 0 && ghosts > 0 &&
+                   !ghost_bad && hits[1] > hits[0]);
+    }
     breaks_free();
     return 0;
 }

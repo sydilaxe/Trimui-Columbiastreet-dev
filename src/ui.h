@@ -40,5 +40,8 @@ void ui_midi_chart(FILE *f);
  * pushed, or -1; and a tap of the tempo (L3) */
 void ui_stick_fx(int fx);
 void ui_tap_tempo(void);
+/* the side switch: what the left stick plays (1 the groove, 0 the filter),
+ * shown in the header; msg, if not NULL, on screen for a moment */
+void ui_left_mode(int groove, const char *msg);
 void ui_set_page(int p); /* for the test harness */
 int ui_scene_on(void);    /* the mute scene switched on (0 M1, 1 M2), or -1 */

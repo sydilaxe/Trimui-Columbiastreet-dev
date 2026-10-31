@@ -210,15 +210,31 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
 The Brick Pro build adds the two analog sticks, for playing the bus live. They spring back when
 let go, and nothing they do is saved.
 
+The **side switch** (on the right, above the power button) picks what the left stick plays:
+down for the FILTER, up for the GROOVE (a GRV badge in the header). A message names it as
+you flip it.
+
 | Stick | Does |
 | --- | --- |
-| left, pushed any way | Closes the L2 low-pass by hand: the further, the darker. Let go, it opens again |
+| left, pushed any way (switch down) | Closes the L2 low-pass by hand: the further, the darker. Let go, it opens again |
+| left, up (switch up) | Locks the Euclidean cells toward breakbeat patterns: the two-step and amen kicks, the backbeat, the amen snare, four on the floor, offbeat hats. Each channel finds the one closest to what its HIT cell plays. A little way changes a few steps; all the way, every bar plays the pattern |
+| left, down (switch up) | The same toward the clave family: tresillo, son and rumba clave, bossa nova, cinquillo |
+| left, right / left (switch up) | Quiet ghost notes on the empty 16ths just after / just before the hits, more the further it goes |
 | right, up / right | Repeat the last 1/8 / 1/16, as R2 + up / right |
 | right, left / down | Reverse / tape stop, as R2 + left / down |
 | L3 (click) | Tap tempo |
 | R3 (click) | A new jungle beat, as SELECT |
 
 R2 + the d-pad wins over the right stick while both are held.
+
+The groove changes the steps, never the cells: let go, and the pattern plays as programmed again.
+Diagonals combine the lock and the ghost notes. On the **Brick**, which has no sticks, the side
+switch up plays a set groove (the cells half locked to the breakbeat patterns, a few ghost notes
+after the hits) and down turns it off.
+
+The switch is GPIO 243 (up 0, down 1). `CS_SWITCH=0` in `launch.sh` leaves it alone,
+`CS_SWITCH=/path` reads another file, `CS_SWITCH_FLIP=1` swaps the two positions. On TrimUI OS,
+check what the system itself does with the switch (its FN switch setting), as it may act too.
 
 ## USB: MIDI clock and audio
 

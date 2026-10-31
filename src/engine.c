@@ -203,6 +203,113 @@ void euclid_permute(Cell *c)
     c->on = 1;
 }
 
+/* ---------------------------------------------------------------- groove */
+
+/* Traditional rhythms over a bar of 16ths (bit i = step i), for the groove's
+ * lock: each channel follows the one closest to what its HIT cell plays in
+ * that bar, so a snare-like channel finds the backbeat and a kick-like one
+ * the two-step. Plain ones are in both lists, so a sparse channel has a
+ * match too. */
+#define B16(a) (1u << (a))
+static const uint16_t tpl_breaks[] = {
+    B16(0),                                             /* the one */
+    B16(0) | B16(8),                                    /* half notes */
+    B16(4) | B16(12),                                   /* backbeat */
+    B16(8),                                             /* half-time snare */
+    B16(0) | B16(10),                                   /* two-step kick */
+    B16(0) | B16(2) | B16(10),                          /* two-step, doubled */
+    B16(0) | B16(2) | B16(10) | B16(11),                /* amen kick */
+    B16(4) | B16(7) | B16(9) | B16(12) | B16(15),       /* amen snare */
+    B16(4) | B16(10) | B16(12),                         /* backbeat with a pickup */
+    B16(0) | B16(4) | B16(8) | B16(12),                 /* four on the floor */
+    B16(2) | B16(6) | B16(10) | B16(14),                /* offbeat hats */
+    0x5555,                                             /* eighths */
+};
+static const uint16_t tpl_clave[] = {
+    B16(0),                                             /* the one */
+    B16(4) | B16(12),                                   /* backbeat */
+    B16(0) | B16(6) | B16(12),                          /* 3-3-2 over the bar */
+    B16(0) | B16(3) | B16(6) | B16(8) | B16(11) | B16(14), /* tresillo, twice */
+    B16(0) | B16(3) | B16(6) | B16(10) | B16(12),       /* son clave 3-2 */
+    B16(2) | B16(4) | B16(8) | B16(11) | B16(14),       /* son clave 2-3 */
+    B16(0) | B16(3) | B16(7) | B16(10) | B16(12),       /* rumba clave 3-2 */
+    B16(0) | B16(3) | B16(6) | B16(10) | B16(13),       /* bossa nova */
+    B16(0) | B16(2) | B16(3) | B16(5) | B16(6) | B16(8) | B16(10) | B16(11) | B16(13) | B16(14), /* cinquillo */
+};
+
+static int popcount16(unsigned x)
+{
+    int n = 0;
+    for (; x; x &= x - 1)
+        n++;
+    return n;
+}
+
+/* a fixed number in 0..1 for each channel, step of the bar and use, so the
+ * groove is the same every pass rather than random */
+static float groove_hash(int v, int i, unsigned salt)
+{
+    uint32_t x = (uint32_t)(v * 16 + i) * 0x9e3779b1u ^ salt;
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return (x >> 8) * (1.f / 16777216.f);
+}
+
+/* the rhythm channel v locks to in the bar holding step, or -1 for none (its
+ * HIT cell is off or empty) */
+static int groove_template(int v, int step, int clave)
+{
+    const Cell *c = &song.pat.cell[v][ROW_HIT];
+    if (!c->on || c->hits < 1)
+        return -1;
+    int bar = step - (step & 15);
+    unsigned m = 0;
+    for (int i = 0; i < 16; i++)
+        if (euclid_hit(c, bar + i))
+            m |= 1u << i;
+    const uint16_t *t = clave ? tpl_clave : tpl_breaks;
+    int n = clave ? (int)(sizeof tpl_clave / sizeof tpl_clave[0]) : (int)(sizeof tpl_breaks / sizeof tpl_breaks[0]);
+    int best = 0, best_score = -99;
+    for (int k = 0; k < n; k++) {
+        int score = 2 * popcount16(m & t[k]) - popcount16(m ^ t[k]);
+        if (score > best_score)
+            best = k, best_score = score;
+    }
+    return t[best];
+}
+
+int groove_flags(int v, int step)
+{
+    int flags = 0;
+    for (int r = 0; r < NROW; r++)
+        if (song.pat.cell[v][r].on && euclid_hit(&song.pat.cell[v][r], step))
+            flags |= 1 << r;
+    float lock = live.groove_lock;
+    if (lock == 0.f || step < 0)
+        return flags;
+    int t = groove_template(v, step, lock < 0.f);
+    if (t < 0)
+        return flags;
+    int i = step & 15, want = t >> i & 1;
+    if (want == (flags != 0) || groove_hash(v, i, 0x51ed270bu) >= fabsf(lock))
+        return flags;
+    return want ? flags | TRIG_HIT : 0;
+}
+
+int groove_ghost_at(int v, int step)
+{
+    float g = live.groove_ghost;
+    if (g == 0.f || v >= NBRK || groove_flags(v, step))
+        return 0;
+    int n = g > 0.f ? step - 1 : step + 1; /* after a hit, or before one */
+    if (n < 0 || !groove_flags(v, n))
+        return 0;
+    return groove_hash(v, step & 15, g > 0.f ? 0x2c1b3c6du : 0x297a2d39u) < 0.75f * fabsf(g);
+}
+
 /* ------------------------------------------------------------------- dsp */
 
 static uint32_t arng = 0x9e3779b9u;
@@ -441,6 +548,21 @@ static void brk_trigger(int v, int flags, int step)
         c->rat_semis = semis;
         c->rat_vel = vel;
     }
+    live.trig_count[v]++;
+}
+
+/* a ghost note: the slice the channel last played, quiet and at most a 16th
+ * long. Not over a ratchet, nor over a GRID channel's break running on. */
+static void brk_ghost(int v)
+{
+    BrkCh *c = &brk[v];
+    const int *P = song.pat.param[v];
+    if (!chan_bank(v) || c->rat_left > 0 || (P[B_MODE] == MODE_GRID && c->h[0].on && c->h[0].rel >= 1.f))
+        return;
+    brk_play_ex(v, live.slice[v], 0, (float)P[B_PITCH], 0.32f, 0);
+    Head *h = &c->h[0];
+    if (h->on && h->end - h->pos > sps * h->inc)
+        h->end = h->pos + sps * h->inc;
     live.trig_count[v]++;
 }
 
@@ -804,12 +926,12 @@ static void fire_step(void)
     if (s % 32 == 0)
         bass.riff_pos = 0;
     for (int v = 0; v < NV; v++) {
-        int flags = 0;
-        for (int r = 0; r < NROW; r++)
-            if (song.pat.cell[v][r].on && euclid_hit(&song.pat.cell[v][r], s))
-                flags |= 1 << r;
-        if (!flags)
+        int flags = groove_flags(v, s);
+        if (!flags) {
+            if (live.groove_ghost != 0.f && groove_ghost_at(v, s))
+                brk_ghost(v);
             continue;
+        }
         if (v == V_BASS)
             bass_trigger(flags, s);
         else
