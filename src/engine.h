@@ -97,6 +97,13 @@ typedef struct {
     int playing;
     int filter_held;
     float sweep_hand;      /* the Brick Pro's left stick: 0 open .. 1 the L2 sweep closed */
+    /* the groove (the side switch up: the left stick, or a set amount on the
+     * Brick), live and never saved; 0 changes nothing.
+     *   groove_lock   > 0 pulls the HIT cells toward breakbeat patterns, < 0
+     *                 toward the clave family; 1 / -1 plays the pattern
+     *   groove_ghost  quiet ghost notes on the empty 16ths: > 0 after a hit,
+     *                 < 0 before one; the size is how many */
+    float groove_lock, groove_ghost;
     int fx;                /* punch-in effect held, or -1 */
     int queued_slot;       /* pattern slot loading at the next bar, or -1 */
     int cur_slot;          /* slot last loaded or saved, or -1 */
@@ -142,6 +149,10 @@ void engine_set_rate(double r);
 double engine_steps_per_frame(void); /* how far the position moves each frame */
 
 int euclid_hit(const Cell *c, int step);
+/* the groove's view of a step: TRIG_ flags after groove_lock, and whether
+ * groove_ghost puts a ghost note there (channel v, any step) */
+int groove_flags(int v, int step);
+int groove_ghost_at(int v, int step);
 void euclid_permute(Cell *c);
 void song_default(void);
 void pattern_generate(Pattern *p, unsigned seed); /* a fresh jungle pattern */
