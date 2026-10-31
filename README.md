@@ -133,6 +133,7 @@ These work on every page:
 | F1 / F2 | Mute scene M1 / M2 on or off (see below) |
 | R2 + F1 / F2 | Save the mixer's mutes and solos as M1 / M2 |
 | R2 + L1 / R1 | M1 / M2 on or off; on the MIX page, save M1 / M2 |
+| HOME (Brick Pro, MustardOS) | Half time: the tempo halved; press again for the tempo it was |
 | MENU | Quit |
 
 ### Mute scenes
@@ -226,6 +227,11 @@ you flip it.
 | R3 (click) | A new jungle beat, as SELECT |
 
 R2 + the d-pad wins over the right stick while both are held.
+
+**Half time** is the HOME key on the left, under the volume keys (MustardOS's button 2). It
+halves the tempo (a 1/2 badge in the header); a second press brings back the tempo it was, or
+doubles a tempo changed meanwhile. The song is saved at the full tempo. On another firmware,
+`CS_JOYMAP=HALF=n` in `launch.sh` puts it on button n (`log.txt` names the buttons it doesn't use).
 
 The groove changes the steps, never the cells: let go, and the pattern plays as programmed again.
 Diagonals combine the lock and the ghost notes. On the **Brick**, which has no sticks, the side

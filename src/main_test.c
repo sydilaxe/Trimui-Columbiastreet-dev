@@ -1180,6 +1180,27 @@ int main(int argc, char **argv)
                hits[1], same_full && changed_part > 0 && changed_part < changed_full && clave_differs > 0 && ghosts > 0 &&
                    !ghost_bad && hits[1] > hits[0]);
     }
+    /* ---- half time (HOME on the Brick Pro): halves the tempo, the next press
+     * puts back the tempo it was; saves keep the full tempo */
+    {
+        song_default();
+        song.bpm = 163.5f;
+        ui_half_time();
+        float half = song.bpm, saved = ui_full_bpm();
+        ui_draw(fb);
+        char path[512];
+        snprintf(path, sizeof path, "%s/halftime.ppm", out);
+        write_ppm(path, fb);
+        ui_half_time();
+        float back = song.bpm;
+        /* a tempo changed in half time doubles when it ends */
+        ui_half_time();
+        song.bpm = 90.f;
+        ui_half_time();
+        float changed = song.bpm;
+        printf("half time: 163.5 -> %.1f, saves %.1f, back %.1f; changed to 90 in half time -> %.1f (want 1: %d)\n", half,
+               saved, back, changed, half == 81.8f && saved == 163.5f && back == 163.5f && changed == 180.f);
+    }
     breaks_free();
     return 0;
 }

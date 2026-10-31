@@ -10,7 +10,6 @@
 #define _GNU_SOURCE
 #include <SDL2/SDL.h>
 #include <fcntl.h>
-#include <malloc.h>
 #include <math.h>
 #include <pthread.h>
 #include <signal.h>
@@ -198,27 +197,32 @@ static void audio_hotplug(void)
  * the Brick they are the buttons TrimUI OS and MustardOS call L3 and R3 (it
  * has no sticks to click); on the Brick Pro, TrimUI OS's 11 and 12 (NextUI's
  * L4 and R4), while 9 and 10 are the sticks' clicks. MustardOS's Brick Pro
- * sends them as 0 and 1 (its keys F1 and F2, which SDL numbers first); 2 and
- * 3 are volume down and up, left to MustardOS, 4 is HOME, 16 and 17 the
- * sticks' clicks (MustardOS's input/devices/tui-brick-pro). CS_JOYMAP=F1=n,F2=n
+ * sends them as 0 and 1 (its keys F1 and F2, which SDL numbers first); 2 is
+ * the HOME key on the left, under the volume keys (seen in log.txt; it plays
+ * half time here), 16 and 17 the sticks' clicks (MustardOS's input/devices/tui-brick-pro). CS_JOYMAP=F1=n,F2=n
  * sets others (log.txt names the buttons it doesn't know). */
 enum { PAD_TRIMUI, PAD_MUOS_BRICK, PAD_MUOS_BRICKPRO, PAD_KINDS };
 static const char *const pad_names[PAD_KINDS] = {"TrimUI OS", "MustardOS (Brick)", "MustardOS (Brick Pro)"};
 
-/* each pad's button numbers, in the order of the BTN_ enum (ending F1, F2), then L3 and R3 */
+/* each pad's button numbers, in the order of the BTN_ enum (ending F1, F2),
+ * then L3 and R3, then HALF: half time on and off. HALF is the HOME key on
+ * the Brick Pro under MustardOS (button 2, on the left under the volume
+ * keys); elsewhere
+ * CS_JOYMAP=HALF=n gives it a button (log.txt names the unused ones). */
 #define JB_L3 BTN_COUNT
 #define JB_R3 (BTN_COUNT + 1)
-#define JB_COUNT (BTN_COUNT + 2)
+#define JB_HALF (BTN_COUNT + 2)
+#define JB_COUNT (BTN_COUNT + 3)
 static const signed char pad_buttons[PAD_KINDS][JB_COUNT] = {
 #ifdef CS_BRICKPRO
-    /*                     UP  DN  LT  RT  A  B  X  Y  L1  R1  L2  R2  SEL STA MENU F1  F2  L3  R3 */
-    [PAD_TRIMUI]        = {-1, -1, -1, -1, 1, 0, 3, 2, 4,  5,  -1, -1, 6,  7,  8,   11, 12, 9,  10},
-    [PAD_MUOS_BRICK]    = {-1, -1, -1, -1, 5, 4, 6, 7, 8,  9,  10, 11, 12, 13, 14,  15, 16, -1, -1},
-    [PAD_MUOS_BRICKPRO] = {-1, -1, -1, -1, 6, 5, 7, 8, 9,  10, 11, 12, 13, 14, 15,  0,  1,  16, 17},
+    /*                     UP  DN  LT  RT  A  B  X  Y  L1  R1  L2  R2  SEL STA MENU F1  F2  L3  R3  HALF */
+    [PAD_TRIMUI]        = {-1, -1, -1, -1, 1, 0, 3, 2, 4,  5,  -1, -1, 6,  7,  8,   11, 12, 9,  10, -1},
+    [PAD_MUOS_BRICK]    = {-1, -1, -1, -1, 5, 4, 6, 7, 8,  9,  10, 11, 12, 13, 14,  15, 16, -1, -1, -1},
+    [PAD_MUOS_BRICKPRO] = {-1, -1, -1, -1, 6, 5, 7, 8, 9,  10, 11, 12, 13, 14, 15,  0,  1,  16, 17, 2},
 #else
-    [PAD_TRIMUI]        = {-1, -1, -1, -1, 1, 0, 3, 2, 4,  5,  -1, -1, 6,  7,  8,   9,  10, -1, -1},
-    [PAD_MUOS_BRICK]    = {-1, -1, -1, -1, 5, 4, 6, 7, 8,  9,  10, 11, 12, 13, 14,  15, 16, -1, -1},
-    [PAD_MUOS_BRICKPRO] = {-1, -1, -1, -1, 6, 5, 7, 8, 9,  10, 11, 12, 13, 14, 15,  0,  1,  16, 17},
+    [PAD_TRIMUI]        = {-1, -1, -1, -1, 1, 0, 3, 2, 4,  5,  -1, -1, 6,  7,  8,   9,  10, -1, -1, -1},
+    [PAD_MUOS_BRICK]    = {-1, -1, -1, -1, 5, 4, 6, 7, 8,  9,  10, 11, 12, 13, 14,  15, 16, -1, -1, -1},
+    [PAD_MUOS_BRICKPRO] = {-1, -1, -1, -1, 6, 5, 7, 8, 9,  10, 11, 12, 13, 14, 15,  0,  1,  16, 17, 2},
 #endif
 };
 
@@ -246,7 +250,7 @@ static void joy_map_default(void)
     /* CS_JOYMAP=A=1,B=0,...: another firmware's numbering (for every pad) */
     const char *m = getenv("CS_JOYMAP");
     static const char *const names[JB_COUNT] = {"UP", "DOWN", "LEFT",  "RIGHT", "A",    "B",  "X",  "Y",  "L1",  "R1",
-                                                "L2", "R2",   "SELECT", "START", "MENU", "F1", "F2", "L3", "R3"};
+                                                "L2", "R2",   "SELECT", "START", "MENU", "F1", "F2", "L3", "R3", "HALF"};
     while (m && *m) {
         char key[16];
         int num;
@@ -519,6 +523,17 @@ static void switch_poll(void)
     groove_apply();
 }
 
+/* the song is saved at its full tempo, half time or not */
+static void save_song(void)
+{
+    ui_lock();
+    float bpm = song.bpm;
+    song.bpm = ui_full_bpm();
+    song_save(SAVE_PATH);
+    song.bpm = bpm;
+    ui_unlock();
+}
+
 static void open_joysticks(void)
 {
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
@@ -561,6 +576,10 @@ static void on_event(const SDL_Event *e)
         int m = b < 32 ? joy_map[pad][b] : -1;
         if (m >= 0 && m < BTN_COUNT)
             ui_button(m, down);
+        else if (m == JB_HALF) {
+            if (down)
+                ui_half_time();
+        }
 #ifdef CS_BRICKPRO
         else if (m == JB_L3) {
             if (down)
@@ -798,13 +817,6 @@ int main(int argc, char **argv)
 
     /* 1 GB: the whole program and its samples stay in memory, so the sound
      * never waits for a page to be read back in */
-    /* and big blocks come from the heap and stay there: log.txt showed a
-     * frame's worth (1.2 MB) of fresh pages every frame, each allocated,
-     * locked and given back again (CS_MALLOC_KEEP=0: glibc's own way) */
-    if (env_int("CS_MALLOC_KEEP", 1)) {
-        mallopt(M_MMAP_THRESHOLD, 32 << 20);
-        mallopt(M_TRIM_THRESHOLD, 64 << 20);
-    }
     if (env_int("CS_MLOCK", 1) && mlockall(MCL_CURRENT | MCL_FUTURE) != 0)
         fprintf(stderr, "could not lock memory\n");
 
@@ -956,14 +968,14 @@ int main(int argc, char **argv)
         if (now - last_save > 15000) {
             last_save = now;
             if (ui_take_changed())
-                song_save(SAVE_PATH);
+                save_song();
         }
         Uint32 spent = SDL_GetTicks() - now;
         next_draw = now + (spent + 2 < 33 ? 33 : spent + 2);
         SDL_Delay(2);
     }
 
-    song_save(SAVE_PATH);
+    save_song();
     switch_close();
     leds_stop();
     midi_stop();
