@@ -630,6 +630,14 @@ int main(int argc, char **argv)
      * an empty scene changes nothing; the scenes survive a save and load */
     {
         song_default();
+        /* the defaults: M1 the bass alone, M2 the breaks alone */
+        int def1 = song.scene_used[0], def2 = song.scene_used[1];
+        for (int v = 0; v < NV; v++) {
+            def1 &= song.scene_mute[0][v] == (v != V_BASS) && !song.scene_solo[0][v];
+            def2 &= song.scene_mute[1][v] == (v == V_BASS) && !song.scene_solo[1][v];
+        }
+        printf("default scenes: F1 the bass alone %d, F2 the breaks alone %d\n", def1, def2);
+        song.scene_used[0] = song.scene_used[1] = 0; /* empty, for what follows */
         memset(song.pat.mute, 0, NV);
         memset(song.solo, 0, NV);
         song.pat.mute[1] = song.pat.mute[V_BASS] = 1;
@@ -687,7 +695,7 @@ int main(int argc, char **argv)
                empty_f2, on, off, combo, swap, back, kept);
     }
 
-    /* ---- a save from before the scenes (v0.3) still loads, without scenes */
+    /* ---- a save from before the scenes (v0.3) still loads, with the default scenes */
     {
         song_default();
         song.bpm = 147.f;

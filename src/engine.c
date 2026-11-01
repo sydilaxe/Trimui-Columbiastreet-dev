@@ -1470,6 +1470,17 @@ void song_clamp(void)
 }
 
 /* The default: the Amen chopped across the four channels over a sub */
+/* the mute scenes until one is saved over: M1 (F1) the bass alone, every
+ * break channel muted; M2 (F2) the breaks alone, the bass muted */
+static void scene_default(int k)
+{
+    for (int v = 0; v < NV; v++) {
+        song.scene_mute[k][v] = k == 0 ? v != V_BASS : v == V_BASS;
+        song.scene_solo[k][v] = 0;
+    }
+    song.scene_used[k] = 1;
+}
+
 void song_default(void)
 {
     memset(&song, 0, sizeof song);
@@ -1483,6 +1494,8 @@ void song_default(void)
     }
     song.vol[2] = 62;
     song.vol[3] = 58;
+    for (int k = 0; k < NSCENE; k++)
+        scene_default(k);
     song.pan[2] = -20;
     song.pan[3] = 20;
     song.send[1] = 18;
@@ -1692,6 +1705,8 @@ int song_load(const char *path)
         song.scene_used[k] = song.scene_used[k] != 0;
         for (int v = 0; v < NV; v++)
             song.scene_mute[k][v] = song.scene_mute[k][v] != 0, song.scene_solo[k][v] = song.scene_solo[k][v] != 0;
+        if (!song.scene_used[k]) /* never saved (or a save from before the scenes): the default */
+            scene_default(k);
     }
     return 1;
 }

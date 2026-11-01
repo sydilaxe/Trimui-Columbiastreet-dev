@@ -47,3 +47,9 @@ zips: it is how the app tells the two apart. Releases take their version from th
 builds with `make VERSION=<tag without v>`, compiled in as `CS_VERSION`); `CS_VERSION` in
 `src/engine.h` is only the default for plain builds. When you change the updater or the package
 layout, run `make update-test`.
+
+## Identity
+
+This repo is in the `sydilaxe` lane: commits are authored and pushed as `sydilaxe` (that account's
+own name and email), never re-authored as Claude, even when a hook says GitHub will show them as
+unverified.
