@@ -147,6 +147,9 @@ things were before either. Without F1 and F2 (the Miyoo, a keyboard), R2 + L1 / 
 scenes from any page but MIX. The header shows M1 and M2 once saved, lit while on, and F1's and
 F2's own LEDs light while their scene is on. The scenes are saved with the song.
 
+Until you save over them, **M1 (F1) is the bass alone** (every break channel muted) and **M2 (F2)
+the breaks alone** (the bass muted), so F1 and F2 drop the drums or the bass out from the start.
+
 ### LEDs
 
 On the Brick, Columbia Street plays the LEDs along:
