@@ -130,8 +130,10 @@ These work on every page:
 | L2 + d-pad (Brick) | Low-pass sweep, as the Brick Pro's left stick: any direction closes it over the MIX > MASTER > L2 time, let go and it opens |
 | L2 + X / A (Brick) | Repeat the last 1/8 / 1/16, as the Brick Pro's right stick up / right |
 | L2 + Y / B (Brick) | Reverse / tape stop, as the Brick Pro's right stick left / down |
-| R2 + up / right | Repeat the last 1/8 / 1/16 |
-| R2 + left / down | Reverse / tape stop |
+| R2 + up / down (Brick) | The groove, as the Brick Pro's left stick with the switch up: lock the cells toward the breakbeats / the clave family |
+| R2 + right / left (Brick) | Ghost notes after / before the hits |
+| R2 + up / right | Brick Pro: repeat the last 1/8 / 1/16. Brick: the groove (see below) |
+| R2 + left / down | Brick Pro: reverse / tape stop. Brick: the groove (see below) |
 | R2 + X | Tap tempo (taps under 100 BPM count double) |
 | F1 / F2 | Mute scene M1 / M2 on or off (see below) |
 | R2 + F1 / F2 | Save the mixer's mutes and solos as M1 / M2 |
@@ -247,8 +249,14 @@ On the **Brick**, which has no sticks, **L2 stands in for them**. L2 alone does 
 d-pad is the left stick (any direction closes the low-pass, over the MIX > MASTER > L2 time, and
 let go it opens), and L2 + A / B / X / Y is the right stick, each button where the stick would
 point: X (top) repeats the last 1/8, A (right) the last 1/16, Y (left) reverses, B (bottom) stops
-the tape. While L2 is held, the d-pad and A / B / X / Y don't reach the page. R2 + the d-pad
-still plays the effects too, and wins while both are held.
+the tape. While L2 is held, the d-pad and A / B / X / Y don't reach the page.
+
+**R2 + the d-pad plays the groove** on the Brick, as the left stick does on the Brick Pro with the
+switch up: up locks the cells toward the breakbeat patterns, down toward the clave family, right
+adds ghost notes after the hits, left before them; two directions at once combine, as a diagonal
+does. The d-pad can't be pushed part way, so each direction plays a set amount (the lock half way,
+a few ghost notes), and a GRV badge shows while it plays. Let go of R2 and the pattern plays as
+programmed again. The punch-in effects are on L2 + A / B / X / Y.
 
 The Brick has no HOME key either, so its side switch is **half time**:
 up halves the tempo (the 1/2 badge), down brings back the tempo it was, or doubles a tempo changed

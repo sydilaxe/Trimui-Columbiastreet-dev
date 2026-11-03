@@ -143,6 +143,7 @@ jobs:
           grep -q "^groove: .*(want 1 1 1: 1)" $r
           grep -q "^half time: .*(want 1: 1)" $r
           grep -q "^brick l2: .*(want 1: 1)" $r
+          grep -q "^brick r2: .*(want 1: 1)" $r
           grep -q "^stick: .*(darker: 1), .*(open again: 1); fx: stick 1, R2 first 1, back 1, off 1" $r
       - name: Self-update against a local fake GitHub
         run: make update-test

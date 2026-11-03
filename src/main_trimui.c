@@ -907,7 +907,7 @@ int main(int argc, char **argv)
 
     ui_init();
 #ifndef CS_BRICKPRO
-    ui_l2_sticks(1); /* no sticks: L2 + the d-pad and L2 + A B X Y play them */
+    ui_l2_sticks(1); /* no sticks: L2 + the d-pad, L2 + A B X Y and R2 + the d-pad play them */
 #endif
 #ifdef CS_BRICKPRO
     fprintf(stderr, "leds: %s\n", leds_start() ? "F1/F2 show the mute scenes, the top bar the level, the shoulders the beat, "

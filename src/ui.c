@@ -42,7 +42,10 @@ static int pat_v, pat_r, chop_v, chop_p, bass_p, mix_v, mix_r, song_cur;
 static int held[BTN_COUNT], hold_ms[BTN_COUNT], rep_ms[BTN_COUNT], rep_n[BTN_COUNT];
 static int b_used; /* B was a modifier this press (PATTERN page) */
 static int fx_order[4], fx_norder;
-static int l2_sticks;               /* the Brick: L2 + the d-pad / A B X Y stand in for the Brick Pro's sticks */
+static int l2_sticks; /* the Brick: L2 + the d-pad / A B X Y, and R2 + the d-pad, stand in for the Brick Pro's sticks */
+/* the groove R2 + the d-pad plays on the Brick: how far the left stick would be pushed */
+#define BRICK_GROOVE_LOCK 0.5f
+#define BRICK_GROOVE_GHOST 0.35f
 static int face_order[4], face_norder; /* A B X Y held under L2, the latest last */
 static int stick_fx = -1; /* the Brick Pro's right stick, or -1 */
 static int half_on;            /* half time: song.bpm is half of half_from */
@@ -137,7 +140,7 @@ static void update_fx(void)
                 live.fx = face_fx[face_order[i] - BTN_A];
                 break;
             }
-    if (!held[BTN_R2])
+    if (!held[BTN_R2] || l2_sticks) /* on the Brick, R2 + the d-pad is the groove */
         return;
     for (int i = fx_norder - 1; i >= 0; i--)
         if (held[fx_order[i]]) {
@@ -194,6 +197,7 @@ void ui_l2_sticks(int on)
     ui_lock();
     l2_sticks = on;
     live.filter_held = held[BTN_L2] && !on;
+    live.groove_lock = live.groove_ghost = 0.f;
     update_fx();
     ui_unlock();
 }
@@ -630,8 +634,16 @@ void ui_button(int b, int down)
     held[b] = down;
     hold_ms[b] = rep_ms[b] = rep_n[b] = 0;
     ui_lock();
-    if (l2_sticks) /* the left stick: L2 + any way on the d-pad closes the filter */
+    if (l2_sticks) {
+        /* the left stick: L2 + any way on the d-pad closes the filter; R2 + the
+         * d-pad plays the groove, as the stick does with the switch up: up locks
+         * toward the breakbeats, down the clave family, right / left ghost notes
+         * after / before the hits (two at once, the diagonal) */
         live.filter_held = held[BTN_L2] && (held[BTN_UP] || held[BTN_DOWN] || held[BTN_LEFT] || held[BTN_RIGHT]);
+        int r2 = held[BTN_R2] && !upd_open;
+        live.groove_lock = r2 ? BRICK_GROOVE_LOCK * (held[BTN_UP] - held[BTN_DOWN]) : 0.f;
+        live.groove_ghost = r2 ? BRICK_GROOVE_GHOST * (held[BTN_RIGHT] - held[BTN_LEFT]) : 0.f;
+    }
     else if (b == BTN_L2)
         live.filter_held = down;
     if (down && is_dpad(b) && !upd_open)
@@ -763,7 +775,9 @@ static void draw_header(void)
         }
     if (half_on)
         badge(&bx, "1/2", 0x46b4ff, 0x000000);
-    if (left_groove == 1) /* the Brick Pro's side switch up: the left stick plays the groove */
+    /* the Brick Pro's side switch up (the left stick plays the groove), or the
+     * Brick's R2 + the d-pad playing it */
+    if (left_groove == 1 || (l2_sticks && (live.groove_lock != 0.f || live.groove_ghost != 0.f)))
         badge(&bx, "GRV", 0x7ad87a, 0x000000);
     if (song.sync_mode != SYNC_OFF) {
         const SyncStatus *ss = sync_status();

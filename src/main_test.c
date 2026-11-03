@@ -1247,10 +1247,34 @@ int main(int argc, char **argv)
         int let_go = !live.filter_held && live.fx < 0;
         ui_button(BTN_LEFT, 0);
         int untouched = !memcmp(&before, &song.pat, sizeof before);
+        /* R2 + the d-pad: the groove, not the effects */
+        ui_button(BTN_R2, 1);
+        ui_button(BTN_UP, 1);
+        int g_up = live.groove_lock > 0.f && live.groove_ghost == 0.f && live.fx < 0;
+        ui_button(BTN_RIGHT, 1);
+        int g_diag = live.groove_lock > 0.f && live.groove_ghost > 0.f;
+        ui_button(BTN_UP, 0);
+        ui_button(BTN_RIGHT, 0);
+        ui_button(BTN_DOWN, 1);
+        ui_button(BTN_LEFT, 1);
+        int g_down = live.groove_lock < 0.f && live.groove_ghost < 0.f;
+        ui_button(BTN_R2, 0); /* let go of R2: the pattern as programmed */
+        int g_off = live.groove_lock == 0.f && live.groove_ghost == 0.f;
+        ui_button(BTN_DOWN, 0);
+        ui_button(BTN_LEFT, 0);
+        int g_untouched = !memcmp(&before, &song.pat, sizeof before);
         ui_l2_sticks(0);
         ui_button(BTN_L2, 1);
         int pro = live.filter_held; /* the Brick Pro: L2 alone sweeps, as before */
         ui_button(BTN_L2, 0);
+        ui_button(BTN_R2, 1);
+        ui_button(BTN_UP, 1);
+        int pro_fx = live.fx == FX_REPEAT8 && live.groove_lock == 0.f; /* and R2 + up repeats */
+        ui_button(BTN_UP, 0);
+        ui_button(BTN_R2, 0);
+        printf("brick r2: + up locks %d, + right too %d, down + left %d, let go %d, pattern untouched %d; "
+               "Brick Pro R2 + up repeats %d (want 1: %d)\n",
+               g_up, g_diag, g_down, g_off, g_untouched, pro_fx, g_up && g_diag && g_down && g_off && g_untouched && pro_fx);
         printf("brick l2: alone %d, + d-pad sweeps %d, opens %d; X %d, A %d, back %d, Y %d, B %d; let go %d; "
                "pattern untouched %d; Brick Pro L2 alone %d (want 1: %d)\n",
                alone, sweep, open, fx_x, fx_a, fx_back, fx_y, fx_b, let_go, untouched, pro,
