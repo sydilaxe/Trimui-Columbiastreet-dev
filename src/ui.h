@@ -39,13 +39,21 @@ void ui_midi_chart(FILE *f);
 /* the Brick Pro's sticks: a punch-in effect (FX_*) while the right stick is
  * pushed, or -1; and a tap of the tempo (L3) */
 void ui_stick_fx(int fx);
+/* the Brick, which has no sticks: L2 alone does nothing, L2 + the d-pad (any
+ * way) closes the filter as the left stick does, L2 + A B X Y play the right
+ * stick's effects (X repeat 1/8, A repeat 1/16, Y reverse, B tape stop), and
+ * R2 + the d-pad plays the groove as the left stick does with the switch up */
+void ui_l2_sticks(int on);
 void ui_tap_tempo(void);
 /* half time: the tempo halved on one press, back to what it was on the next
  * (the HOME key on the Brick Pro under MustardOS); ui_full_bpm is the tempo
- * to save, the full one while half time is on */
+ * to save, the full one while half time is on. ui_set_half_time puts it on
+ * or off (the Brick's side switch); 0 if it couldn't yet (the update prompt is
+ * up), so the caller tries again */
 void ui_half_time(void);
+int ui_set_half_time(int on);
 float ui_full_bpm(void);
-/* the side switch: what the left stick plays (1 the groove, 0 the filter),
+/* the Brick Pro's side switch: what the left stick plays (1 the groove, 0 the filter),
  * shown in the header; msg, if not NULL, on screen for a moment */
 void ui_left_mode(int groove, const char *msg);
 void ui_set_page(int p); /* for the test harness */

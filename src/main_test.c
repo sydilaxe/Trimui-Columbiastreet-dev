@@ -1188,7 +1188,7 @@ int main(int argc, char **argv)
                hits[1], same_full && changed_part > 0 && changed_part < changed_full && clave_differs > 0 && ghosts > 0 &&
                    !ghost_bad && hits[1] > hits[0]);
     }
-    /* ---- half time (HOME on the Brick Pro): halves the tempo, the next press
+    /* ---- half time (HOME on the Brick Pro, the side switch on the Brick): halves the tempo, the next press
      * puts back the tempo it was; saves keep the full tempo */
     {
         song_default();
@@ -1206,8 +1206,79 @@ int main(int argc, char **argv)
         song.bpm = 90.f;
         ui_half_time();
         float changed = song.bpm;
-        printf("half time: 163.5 -> %.1f, saves %.1f, back %.1f; changed to 90 in half time -> %.1f (want 1: %d)\n", half,
-               saved, back, changed, half == 81.8f && saved == 163.5f && back == 163.5f && changed == 180.f);
+        /* the Brick's side switch sets it, and setting it twice changes nothing */
+        song.bpm = 170.f;
+        int set_ok = ui_set_half_time(1) && ui_set_half_time(1) && song.bpm == 85.f && ui_set_half_time(0) &&
+                     ui_set_half_time(0) && song.bpm == 170.f;
+        printf("half time: 163.5 -> %.1f, saves %.1f, back %.1f; changed to 90 in half time -> %.1f; switch on, on, "
+               "off, off from 170: %d (want 1: %d)\n",
+               half, saved, back, changed, set_ok,
+               half == 81.8f && saved == 163.5f && back == 163.5f && changed == 180.f && set_ok);
+    }
+    /* ---- the Brick's L2: alone it does nothing; with the d-pad it closes the
+     * filter as the left stick does, with A B X Y it plays the right stick's
+     * effects (X up, A right, Y left, B down); the page sees none of it */
+    {
+        song_default();
+        ui_set_page(PAGE_PATTERN);
+        ui_l2_sticks(1);
+        Pattern before = song.pat;
+        ui_button(BTN_L2, 1);
+        int alone = !live.filter_held && live.fx < 0;
+        ui_button(BTN_DOWN, 1);
+        int sweep = live.filter_held;
+        ui_button(BTN_DOWN, 0);
+        int open = !live.filter_held;
+        ui_button(BTN_X, 1);
+        int fx_x = live.fx == FX_REPEAT8;
+        ui_button(BTN_A, 1);
+        int fx_a = live.fx == FX_REPEAT16; /* the latest pressed wins */
+        ui_button(BTN_A, 0);
+        int fx_back = live.fx == FX_REPEAT8;
+        ui_button(BTN_X, 0);
+        ui_button(BTN_Y, 1);
+        int fx_y = live.fx == FX_REVERSE;
+        ui_button(BTN_Y, 0);
+        ui_button(BTN_B, 1);
+        int fx_b = live.fx == FX_TAPESTOP;
+        ui_button(BTN_B, 0); /* not a random rhythm on PATTERN */
+        ui_button(BTN_LEFT, 1);
+        ui_button(BTN_L2, 0); /* let go of L2 first: the filter opens */
+        int let_go = !live.filter_held && live.fx < 0;
+        ui_button(BTN_LEFT, 0);
+        int untouched = !memcmp(&before, &song.pat, sizeof before);
+        /* R2 + the d-pad: the groove, not the effects */
+        ui_button(BTN_R2, 1);
+        ui_button(BTN_UP, 1);
+        int g_up = live.groove_lock > 0.f && live.groove_ghost == 0.f && live.fx < 0;
+        ui_button(BTN_RIGHT, 1);
+        int g_diag = live.groove_lock > 0.f && live.groove_ghost > 0.f;
+        ui_button(BTN_UP, 0);
+        ui_button(BTN_RIGHT, 0);
+        ui_button(BTN_DOWN, 1);
+        ui_button(BTN_LEFT, 1);
+        int g_down = live.groove_lock < 0.f && live.groove_ghost < 0.f;
+        ui_button(BTN_R2, 0); /* let go of R2: the pattern as programmed */
+        int g_off = live.groove_lock == 0.f && live.groove_ghost == 0.f;
+        ui_button(BTN_DOWN, 0);
+        ui_button(BTN_LEFT, 0);
+        int g_untouched = !memcmp(&before, &song.pat, sizeof before);
+        ui_l2_sticks(0);
+        ui_button(BTN_L2, 1);
+        int pro = live.filter_held; /* the Brick Pro: L2 alone sweeps, as before */
+        ui_button(BTN_L2, 0);
+        ui_button(BTN_R2, 1);
+        ui_button(BTN_UP, 1);
+        int pro_fx = live.fx == FX_REPEAT8 && live.groove_lock == 0.f; /* and R2 + up repeats */
+        ui_button(BTN_UP, 0);
+        ui_button(BTN_R2, 0);
+        printf("brick r2: + up locks %d, + right too %d, down + left %d, let go %d, pattern untouched %d; "
+               "Brick Pro R2 + up repeats %d (want 1: %d)\n",
+               g_up, g_diag, g_down, g_off, g_untouched, pro_fx, g_up && g_diag && g_down && g_off && g_untouched && pro_fx);
+        printf("brick l2: alone %d, + d-pad sweeps %d, opens %d; X %d, A %d, back %d, Y %d, B %d; let go %d; "
+               "pattern untouched %d; Brick Pro L2 alone %d (want 1: %d)\n",
+               alone, sweep, open, fx_x, fx_a, fx_back, fx_y, fx_b, let_go, untouched, pro,
+               alone && sweep && open && fx_x && fx_a && fx_back && fx_y && fx_b && let_go && untouched && pro);
     }
     breaks_free();
     return 0;

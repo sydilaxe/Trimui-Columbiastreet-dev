@@ -126,13 +126,19 @@ These work on every page:
 | L1 / R1 | Previous / next page |
 | START | Play / stop |
 | SELECT | A new jungle beat on all five channels, keeping the mutes and the mixer; R2+SELECT undoes it |
-| L2 (hold) | Low-pass sweep, closing over the time set on MIX > MASTER > L2 |
-| R2 + up / right | Repeat the last 1/8 / 1/16 |
-| R2 + left / down | Reverse / tape stop |
+| L2 (hold) | Brick Pro: low-pass sweep, closing over the time set on MIX > MASTER > L2. Brick: see below |
+| L2 + d-pad (Brick) | Low-pass sweep, as the Brick Pro's left stick: any direction closes it over the MIX > MASTER > L2 time, let go and it opens |
+| L2 + X / A (Brick) | Repeat the last 1/8 / 1/16, as the Brick Pro's right stick up / right |
+| L2 + Y / B (Brick) | Reverse / tape stop, as the Brick Pro's right stick left / down |
+| R2 + up / down (Brick) | The groove, as the Brick Pro's left stick with the switch up: lock the cells toward the breakbeats / the clave family |
+| R2 + right / left (Brick) | Ghost notes after / before the hits |
+| R2 + up / right | Brick Pro: repeat the last 1/8 / 1/16. Brick: the groove (see below) |
+| R2 + left / down | Brick Pro: reverse / tape stop. Brick: the groove (see below) |
 | R2 + X | Tap tempo (taps under 100 BPM count double) |
 | F1 / F2 | Mute scene M1 / M2 on or off (see below) |
 | R2 + F1 / F2 | Save the mixer's mutes and solos as M1 / M2 |
 | R2 + L1 / R1 | M1 / M2 on or off; on the MIX page, save M1 / M2 |
+| Side switch (Brick) | Half time: up halves the tempo, down brings back the tempo it was |
 | HOME (Brick Pro, MustardOS) | Half time: the tempo halved; press again for the tempo it was |
 | MENU | Quit |
 
@@ -237,13 +243,31 @@ doubles a tempo changed meanwhile. The song is saved at the full tempo. On anoth
 `CS_JOYMAP=HALF=n` in `launch.sh` puts it on button n (`log.txt` names the buttons it doesn't use).
 
 The groove changes the steps, never the cells: let go, and the pattern plays as programmed again.
-Diagonals combine the lock and the ghost notes. On the **Brick**, which has no sticks, the side
-switch up plays a set groove (the cells half locked to the breakbeat patterns, a few ghost notes
-after the hits) and down turns it off.
+Diagonals combine the lock and the ghost notes.
+
+On the **Brick**, which has no sticks, **L2 stands in for them**. L2 alone does nothing; L2 + the
+d-pad is the left stick (any direction closes the low-pass, over the MIX > MASTER > L2 time, and
+let go it opens), and L2 + A / B / X / Y is the right stick, each button where the stick would
+point: X (top) repeats the last 1/8, A (right) the last 1/16, Y (left) reverses, B (bottom) stops
+the tape. While L2 is held, the d-pad and A / B / X / Y don't reach the page.
+
+**R2 + the d-pad plays the groove** on the Brick, as the left stick does on the Brick Pro with the
+switch up: up locks the cells toward the breakbeat patterns, down toward the clave family, right
+adds ghost notes after the hits, left before them; two directions at once combine, as a diagonal
+does. The d-pad can't be pushed part way, so each direction plays a set amount (the lock half way,
+a few ghost notes), and a GRV badge shows while it plays. Let go of R2 and the pattern plays as
+programmed again. The punch-in effects are on L2 + A / B / X / Y.
+
+The Brick has no HOME key either, so its side switch is **half time**:
+up halves the tempo (the 1/2 badge), down brings back the tempo it was, or doubles a tempo changed
+meanwhile. If the switch is up when the app starts, it starts in half time; the song is still saved
+at the full tempo.
 
 The switch is GPIO 243 (up 0, down 1). `CS_SWITCH=0` in `launch.sh` leaves it alone,
 `CS_SWITCH=/path` reads another file, `CS_SWITCH_FLIP=1` swaps the two positions. On TrimUI OS,
 check what the system itself does with the switch (its FN switch setting), as it may act too.
+MustardOS reads the same pin on the Brick and the Brick Pro (its input daemon passes it on as a
+switch on the muOS-Keys controller) but does nothing with it, so nothing else happens when you flip it.
 
 ## USB: MIDI clock and audio
 
