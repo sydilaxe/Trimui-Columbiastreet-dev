@@ -436,8 +436,9 @@ static void sticks_apply(void)
  * On the Brick Pro it picks what the left stick plays: up the GROOVE, down
  * the FILTER. On the Brick, which has no sticks, it is half time: up halves
  * the tempo, down brings back the full one (as HOME does on the Brick Pro).
- * It is GPIO 243 (0 up, 1 down on the Brick Pro under MustardOS), read as
- * NextUI reads it; if no one has exported it, it is exported here and given
+ * It is GPIO 243 on both (0 up, 1 down on the Brick Pro under MustardOS;
+ * MustardOS's input daemon reads the same pin on the Brick, and nothing in
+ * MustardOS acts on it), read as NextUI reads it; if no one has exported it, it is exported here and given
  * back at quit. CS_SWITCH=0 leaves it alone, CS_SWITCH=/path reads another
  * file holding 0 or 1, CS_SWITCH_FLIP=1 swaps the two positions. */
 #define SWITCH_GPIO "243"

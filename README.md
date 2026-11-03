@@ -248,6 +248,8 @@ at the full tempo.
 The switch is GPIO 243 (up 0, down 1). `CS_SWITCH=0` in `launch.sh` leaves it alone,
 `CS_SWITCH=/path` reads another file, `CS_SWITCH_FLIP=1` swaps the two positions. On TrimUI OS,
 check what the system itself does with the switch (its FN switch setting), as it may act too.
+MustardOS reads the same pin on the Brick and the Brick Pro (its input daemon passes it on as a
+switch on the muOS-Keys controller) but does nothing with it, so nothing else happens when you flip it.
 
 ## USB: MIDI clock and audio
 
