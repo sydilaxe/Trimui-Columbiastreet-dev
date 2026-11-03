@@ -126,7 +126,10 @@ These work on every page:
 | L1 / R1 | Previous / next page |
 | START | Play / stop |
 | SELECT | A new jungle beat on all five channels, keeping the mutes and the mixer; R2+SELECT undoes it |
-| L2 (hold) | Low-pass sweep, closing over the time set on MIX > MASTER > L2 |
+| L2 (hold) | Brick Pro: low-pass sweep, closing over the time set on MIX > MASTER > L2. Brick: see below |
+| L2 + d-pad (Brick) | Low-pass sweep, as the Brick Pro's left stick: any direction closes it over the MIX > MASTER > L2 time, let go and it opens |
+| L2 + X / A (Brick) | Repeat the last 1/8 / 1/16, as the Brick Pro's right stick up / right |
+| L2 + Y / B (Brick) | Reverse / tape stop, as the Brick Pro's right stick left / down |
 | R2 + up / right | Repeat the last 1/8 / 1/16 |
 | R2 + left / down | Reverse / tape stop |
 | R2 + X | Tap tempo (taps under 100 BPM count double) |
@@ -240,7 +243,14 @@ doubles a tempo changed meanwhile. The song is saved at the full tempo. On anoth
 The groove changes the steps, never the cells: let go, and the pattern plays as programmed again.
 Diagonals combine the lock and the ghost notes.
 
-On the **Brick**, which has no sticks (and no HOME key), the side switch is **half time** instead:
+On the **Brick**, which has no sticks, **L2 stands in for them**. L2 alone does nothing; L2 + the
+d-pad is the left stick (any direction closes the low-pass, over the MIX > MASTER > L2 time, and
+let go it opens), and L2 + A / B / X / Y is the right stick, each button where the stick would
+point: X (top) repeats the last 1/8, A (right) the last 1/16, Y (left) reverses, B (bottom) stops
+the tape. While L2 is held, the d-pad and A / B / X / Y don't reach the page. R2 + the d-pad
+still plays the effects too, and wins while both are held.
+
+The Brick has no HOME key either, so its side switch is **half time**:
 up halves the tempo (the 1/2 badge), down brings back the tempo it was, or doubles a tempo changed
 meanwhile. If the switch is up when the app starts, it starts in half time; the song is still saved
 at the full tempo.

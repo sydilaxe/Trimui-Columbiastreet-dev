@@ -42,6 +42,8 @@ static int pat_v, pat_r, chop_v, chop_p, bass_p, mix_v, mix_r, song_cur;
 static int held[BTN_COUNT], hold_ms[BTN_COUNT], rep_ms[BTN_COUNT], rep_n[BTN_COUNT];
 static int b_used; /* B was a modifier this press (PATTERN page) */
 static int fx_order[4], fx_norder;
+static int l2_sticks;               /* the Brick: L2 + the d-pad / A B X Y stand in for the Brick Pro's sticks */
+static int face_order[4], face_norder; /* A B X Y held under L2, the latest last */
 static int stick_fx = -1; /* the Brick Pro's right stick, or -1 */
 static int half_on;            /* half time: song.bpm is half of half_from */
 static float half_from, half_to; /* the tempo before, and the one it became */
@@ -113,6 +115,11 @@ int ui_take_changed(void)
 static int wrap(int x, int n) { return (x % n + n) % n; }
 static int clampi(int x, int lo, int hi) { return x < lo ? lo : x > hi ? hi : x; }
 static int is_dpad(int b) { return b <= BTN_RIGHT; }
+static int is_face(int b) { return b >= BTN_A && b <= BTN_Y; }
+
+/* L2 held as the Brick's stand-in for the sticks: the d-pad and A B X Y go to
+ * it instead of the page */
+static int l2_combo(int b) { return l2_sticks && held[BTN_L2] && (is_dpad(b) || is_face(b)); }
 
 /* ---------------------------------------------------------------- input */
 
@@ -121,7 +128,15 @@ static int is_dpad(int b) { return b <= BTN_RIGHT; }
 static void update_fx(void)
 {
     static const int fx_of[4] = {FX_REPEAT8, FX_TAPESTOP, FX_REVERSE, FX_REPEAT16};
+    /* L2 + A B X Y, each where the right stick would point: X up, A right, Y left, B down */
+    static const int face_fx[4] = {FX_REPEAT16, FX_TAPESTOP, FX_REPEAT8, FX_REVERSE};
     live.fx = upd_open ? -1 : stick_fx;
+    if (l2_sticks && held[BTN_L2] && !upd_open)
+        for (int i = face_norder - 1; i >= 0; i--)
+            if (held[face_order[i]]) {
+                live.fx = face_fx[face_order[i] - BTN_A];
+                break;
+            }
     if (!held[BTN_R2])
         return;
     for (int i = fx_norder - 1; i >= 0; i--)
@@ -129,6 +144,16 @@ static void update_fx(void)
             live.fx = fx_of[fx_order[i]];
             return;
         }
+}
+
+static void note_face_press(int b)
+{
+    int n = 0;
+    for (int i = 0; i < face_norder; i++)
+        if (face_order[i] != b)
+            face_order[n++] = face_order[i];
+    face_order[n++] = b;
+    face_norder = n;
 }
 
 static void note_dpad_press(int b)
@@ -162,6 +187,15 @@ static void tap_tempo(void)
     bpm = bpm < 40.f ? 40.f : bpm > 250.f ? 250.f : bpm;
     song.bpm = roundf(bpm * 10.f) / 10.f;
     say("TAP  %.1f BPM", song.bpm);
+}
+
+void ui_l2_sticks(int on)
+{
+    ui_lock();
+    l2_sticks = on;
+    live.filter_held = held[BTN_L2] && !on;
+    update_fx();
+    ui_unlock();
 }
 
 void ui_stick_fx(int fx)
@@ -578,6 +612,8 @@ static void update_action(int b)
 
 static int repeatable(int b)
 {
+    if (l2_combo(b))
+        return 0;
     if (is_dpad(b))
         return !held[BTN_R2];
     if (held[BTN_R2])
@@ -594,7 +630,9 @@ void ui_button(int b, int down)
     held[b] = down;
     hold_ms[b] = rep_ms[b] = rep_n[b] = 0;
     ui_lock();
-    if (b == BTN_L2)
+    if (l2_sticks) /* the left stick: L2 + any way on the d-pad closes the filter */
+        live.filter_held = held[BTN_L2] && (held[BTN_UP] || held[BTN_DOWN] || held[BTN_LEFT] || held[BTN_RIGHT]);
+    else if (b == BTN_L2)
         live.filter_held = down;
     if (down && is_dpad(b) && !upd_open)
         note_dpad_press(b);
@@ -603,6 +641,12 @@ void ui_button(int b, int down)
             update_action(b);
         if (b == BTN_B)
             b_used = 1; /* so letting go of B doesn't roll a rhythm on PATTERN */
+    }
+    else if (l2_combo(b)) {
+        if (down && is_face(b))
+            note_face_press(b);
+        if (b == BTN_B)
+            b_used = 1;
     }
     else if (b == BTN_B && page == PAGE_PATTERN) {
         if (down)

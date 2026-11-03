@@ -39,6 +39,10 @@ void ui_midi_chart(FILE *f);
 /* the Brick Pro's sticks: a punch-in effect (FX_*) while the right stick is
  * pushed, or -1; and a tap of the tempo (L3) */
 void ui_stick_fx(int fx);
+/* the Brick, which has no sticks: L2 alone does nothing, L2 + the d-pad (any
+ * way) closes the filter as the left stick does, and L2 + A B X Y play the
+ * right stick's effects (X repeat 1/8, A repeat 1/16, Y reverse, B tape stop) */
+void ui_l2_sticks(int on);
 void ui_tap_tempo(void);
 /* half time: the tempo halved on one press, back to what it was on the next
  * (the HOME key on the Brick Pro under MustardOS); ui_full_bpm is the tempo
