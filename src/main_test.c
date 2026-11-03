@@ -1188,7 +1188,7 @@ int main(int argc, char **argv)
                hits[1], same_full && changed_part > 0 && changed_part < changed_full && clave_differs > 0 && ghosts > 0 &&
                    !ghost_bad && hits[1] > hits[0]);
     }
-    /* ---- half time (HOME on the Brick Pro): halves the tempo, the next press
+    /* ---- half time (HOME on the Brick Pro, the side switch on the Brick): halves the tempo, the next press
      * puts back the tempo it was; saves keep the full tempo */
     {
         song_default();
@@ -1206,8 +1206,14 @@ int main(int argc, char **argv)
         song.bpm = 90.f;
         ui_half_time();
         float changed = song.bpm;
-        printf("half time: 163.5 -> %.1f, saves %.1f, back %.1f; changed to 90 in half time -> %.1f (want 1: %d)\n", half,
-               saved, back, changed, half == 81.8f && saved == 163.5f && back == 163.5f && changed == 180.f);
+        /* the Brick's side switch sets it, and setting it twice changes nothing */
+        song.bpm = 170.f;
+        int set_ok = ui_set_half_time(1) && ui_set_half_time(1) && song.bpm == 85.f && ui_set_half_time(0) &&
+                     ui_set_half_time(0) && song.bpm == 170.f;
+        printf("half time: 163.5 -> %.1f, saves %.1f, back %.1f; changed to 90 in half time -> %.1f; switch on, on, "
+               "off, off from 170: %d (want 1: %d)\n",
+               half, saved, back, changed, set_ok,
+               half == 81.8f && saved == 163.5f && back == 163.5f && changed == 180.f && set_ok);
     }
     breaks_free();
     return 0;

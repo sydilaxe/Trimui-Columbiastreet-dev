@@ -133,6 +133,7 @@ These work on every page:
 | F1 / F2 | Mute scene M1 / M2 on or off (see below) |
 | R2 + F1 / F2 | Save the mixer's mutes and solos as M1 / M2 |
 | R2 + L1 / R1 | M1 / M2 on or off; on the MIX page, save M1 / M2 |
+| Side switch (Brick) | Half time: up halves the tempo, down brings back the tempo it was |
 | HOME (Brick Pro, MustardOS) | Half time: the tempo halved; press again for the tempo it was |
 | MENU | Quit |
 
@@ -237,9 +238,12 @@ doubles a tempo changed meanwhile. The song is saved at the full tempo. On anoth
 `CS_JOYMAP=HALF=n` in `launch.sh` puts it on button n (`log.txt` names the buttons it doesn't use).
 
 The groove changes the steps, never the cells: let go, and the pattern plays as programmed again.
-Diagonals combine the lock and the ghost notes. On the **Brick**, which has no sticks, the side
-switch up plays a set groove (the cells half locked to the breakbeat patterns, a few ghost notes
-after the hits) and down turns it off.
+Diagonals combine the lock and the ghost notes.
+
+On the **Brick**, which has no sticks (and no HOME key), the side switch is **half time** instead:
+up halves the tempo (the 1/2 badge), down brings back the tempo it was, or doubles a tempo changed
+meanwhile. If the switch is up when the app starts, it starts in half time; the song is still saved
+at the full tempo.
 
 The switch is GPIO 243 (up 0, down 1). `CS_SWITCH=0` in `launch.sh` leaves it alone,
 `CS_SWITCH=/path` reads another file, `CS_SWITCH_FLIP=1` swaps the two positions. On TrimUI OS,

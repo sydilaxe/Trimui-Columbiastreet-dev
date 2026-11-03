@@ -370,10 +370,10 @@ static void on_trigger(int which, int value)
     }
 }
 
+#ifdef CS_BRICKPRO
 /* the side switch (above the power button) up: the groove, see switch_open */
 static int groove_mode;
 
-#ifdef CS_BRICKPRO
 /* The Brick Pro's sticks: live performance, springing back when let go;
  * nothing they do is saved.
  *   left stick   with the side switch down (FILTER), pushed any way: the L2
@@ -432,21 +432,16 @@ static void sticks_apply(void)
 }
 #endif
 
-/* The side switch, above the power button (TrimUI's FN switch). Up (GROOVE):
- * on the Brick Pro the left stick plays the groove instead of the filter; on
- * the Brick, which has no sticks, a set amount of the groove plays (the cells
- * half locked to the breakbeat patterns, a few ghost notes after the hits).
- * Down (FILTER): as before. It is GPIO 243 (0 up, 1 down on the Brick Pro
- * under MustardOS), read as NextUI reads it; if no
- * one has exported it, it is exported here and given back at quit.
- * CS_SWITCH=0 leaves it alone, CS_SWITCH=/path reads another file holding 0
- * or 1, CS_SWITCH_FLIP=1 swaps the two positions. */
+/* The side switch, above the power button (TrimUI's FN switch).
+ * On the Brick Pro it picks what the left stick plays: up the GROOVE, down
+ * the FILTER. On the Brick, which has no sticks, it is half time: up halves
+ * the tempo, down brings back the full one (as HOME does on the Brick Pro).
+ * It is GPIO 243 (0 up, 1 down on the Brick Pro under MustardOS), read as
+ * NextUI reads it; if no one has exported it, it is exported here and given
+ * back at quit. CS_SWITCH=0 leaves it alone, CS_SWITCH=/path reads another
+ * file holding 0 or 1, CS_SWITCH_FLIP=1 swaps the two positions. */
 #define SWITCH_GPIO "243"
 #define SWITCH_PATH "/sys/class/gpio/gpio" SWITCH_GPIO "/value"
-#ifndef CS_BRICKPRO
-#define BRICK_GROOVE_LOCK 0.5f
-#define BRICK_GROOVE_GHOST 0.35f
-#endif
 static int sw_fd = -1, sw_exported, sw_state = -1, sw_flip;
 
 static int write_sys(const char *path, const char *text)
@@ -475,8 +470,13 @@ static void switch_open(void)
     }
     sw_flip = env_int("CS_SWITCH_FLIP", 0);
     if (sw_fd < 0)
-        fprintf(stderr, "switch: %s not found, the left stick stays on the filter (CS_SWITCH=/path names another)\n",
-                path);
+        fprintf(stderr, "switch: %s not found, %s (CS_SWITCH=/path names another)\n", path,
+#ifdef CS_BRICKPRO
+                "the left stick stays on the filter"
+#else
+                "no half time from it"
+#endif
+        );
     else
         fprintf(stderr, "switch: %s%s%s\n", path, sw_exported ? " (exported here)" : "",
                 sw_flip ? ", positions swapped" : "");
@@ -491,36 +491,36 @@ static void switch_close(void)
         write_sys("/sys/class/gpio/unexport", SWITCH_GPIO);
 }
 
-static void groove_apply(void)
-{
-#ifdef CS_BRICKPRO
-    sticks_apply();
-#else
-    ui_lock();
-    live.groove_lock = groove_mode ? BRICK_GROOVE_LOCK : 0.f;
-    live.groove_ghost = groove_mode ? BRICK_GROOVE_GHOST : 0.f;
-    ui_unlock();
+#ifndef CS_BRICKPRO
+static int half_want = -1; /* the switch's half time, until the UI takes it */
 #endif
-}
 
 /* a few times a second, from the main loop */
 static void switch_poll(void)
 {
+#ifndef CS_BRICKPRO
+    if (half_want >= 0 && ui_set_half_time(half_want)) /* waits out the update prompt */
+        half_want = -1;
+#endif
     char c[4];
     if (sw_fd < 0 || pread(sw_fd, c, sizeof c, 0) < 1 || (c[0] != '0' && c[0] != '1'))
         return;
     int s = (c[0] == '0') ^ sw_flip; /* 0 is up */
     if (s == sw_state)
         return;
+#ifdef CS_BRICKPRO
     int first = sw_state < 0;
     sw_state = groove_mode = s;
     fprintf(stderr, "switch: %s (the left stick plays the %s)\n", s ? "up" : "down", s ? "groove" : "filter");
-#ifdef CS_BRICKPRO
     ui_left_mode(s, first ? NULL : s ? "LEFT STICK: GROOVE" : "LEFT STICK: FILTER");
+    sticks_apply();
 #else
-    ui_left_mode(s, first && !s ? NULL : s ? "GROOVE ON" : "GROOVE OFF");
+    sw_state = s;
+    fprintf(stderr, "switch: %s (%s time)\n", s ? "up" : "down", s ? "half" : "full");
+    half_want = s;
+    if (ui_set_half_time(s))
+        half_want = -1;
 #endif
-    groove_apply();
 }
 
 /* the song is saved at its full tempo, half time or not */

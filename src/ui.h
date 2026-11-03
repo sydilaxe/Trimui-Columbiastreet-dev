@@ -42,10 +42,13 @@ void ui_stick_fx(int fx);
 void ui_tap_tempo(void);
 /* half time: the tempo halved on one press, back to what it was on the next
  * (the HOME key on the Brick Pro under MustardOS); ui_full_bpm is the tempo
- * to save, the full one while half time is on */
+ * to save, the full one while half time is on. ui_set_half_time puts it on
+ * or off (the Brick's side switch); 0 if it couldn't yet (the update prompt is
+ * up), so the caller tries again */
 void ui_half_time(void);
+int ui_set_half_time(int on);
 float ui_full_bpm(void);
-/* the side switch: what the left stick plays (1 the groove, 0 the filter),
+/* the Brick Pro's side switch: what the left stick plays (1 the groove, 0 the filter),
  * shown in the header; msg, if not NULL, on screen for a moment */
 void ui_left_mode(int groove, const char *msg);
 void ui_set_page(int p); /* for the test harness */

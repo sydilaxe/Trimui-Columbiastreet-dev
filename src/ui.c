@@ -193,6 +193,13 @@ void ui_half_time(void)
     ui_unlock();
 }
 
+int ui_set_half_time(int on)
+{
+    if ((on != 0) != half_on)
+        ui_half_time();
+    return (on != 0) == half_on;
+}
+
 float ui_full_bpm(void)
 {
     if (!half_on)
@@ -710,10 +717,9 @@ static void draw_header(void)
             snprintf(m, sizeof m, "M%d", k + 1);
             badge(&bx, m, scene_on == k ? C_MUTE : C_PANEL2, scene_on == k ? 0x000000 : C_DIM);
         }
-    /* the side switch up: the groove plays */
     if (half_on)
         badge(&bx, "1/2", 0x46b4ff, 0x000000);
-    if (left_groove == 1)
+    if (left_groove == 1) /* the Brick Pro's side switch up: the left stick plays the groove */
         badge(&bx, "GRV", 0x7ad87a, 0x000000);
     if (song.sync_mode != SYNC_OFF) {
         const SyncStatus *ss = sync_status();
