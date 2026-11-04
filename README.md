@@ -19,6 +19,8 @@ pattern slots switch on the bar line, and the unit syncs tempo over Wi-Fi with H
 Jaffedrone, leads other gear from a mono + clock-pulse output, and sends and follows MIDI clock
 over USB.
 
+**Latest release:** [v0.6.0](../../releases/tag/v0.6.0) · [all releases](../../releases)
+
 ## Install
 
 Each release has a package for each device and firmware. The Brick Pro's adds the analog sticks.
@@ -374,12 +376,12 @@ package carries.
 
 CI (`.github/workflows/build.yml`) builds both TrimUI packages with zig and runs the tests on
 every push.
-To publish a release, push a tag (`git tag v0.3.1 && git push origin v0.3.1`), or run the
-workflow from the Actions tab with the tag in `release_tag` (`v0.3.1` or `0.3.1`). The version
-comes from the tag: CI builds the release with `make package VERSION=0.3.1`, which the app
+To publish a release, push a tag (`git tag v1.2.3 && git push origin v1.2.3`), or run the
+workflow from the Actions tab with the tag in `release_tag` (`v1.2.3` or `1.2.3`). The version
+comes from the tag: CI builds the release with `make package VERSION=1.2.3`, which the app
 compares with the latest release's tag to tell whether it's out of date, so there's nothing to
 bump first. A tag must be `v` and dotted numbers. Plain builds use `CS_VERSION` in `src/engine.h`
-(`make version` prints the version a build gets). Releases are full releases marked Latest, since the updater and `install.sh`
+(`make version` prints the version a build gets); keep it, and the README's **Latest release** line, at the latest release (CI checks the two match). Releases are full releases marked Latest, since the updater and `install.sh`
 read GitHub's latest release, and that skips pre-releases. They have `ColumbiaStreet-brick.zip`,
 `ColumbiaStreet-brickpro.zip`, `ColumbiaStreet-mustardos-brick.muxapp` and
 `ColumbiaStreet-mustardos-brickpro.muxapp` attached and `.github/release-notes.md` as their notes. Running again for the same tag replaces
