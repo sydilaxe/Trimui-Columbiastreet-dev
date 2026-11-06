@@ -153,6 +153,7 @@ jobs:
           grep -q "^song files: .*(want 1: 1)" $r
           # the one-touch fill (R3, the Brick's L2 tapped)
           grep -q "^fill: .*(want 1: 1)" $r
+          grep -q "^feel: .*(want 1: 1)" $r
           grep -q "^half time: .*(want 1: 1)" $r
           grep -q "^brick l2: .*(want 1: 1)" $r
           grep -q "^brick r2: .*(want 1: 1)" $r

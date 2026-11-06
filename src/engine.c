@@ -535,6 +535,7 @@ static int brk_pick(int v, int step)
 }
 
 static float sps; /* samples per 16th */
+static float step_gain = 1.f; /* BREATH's dynamics for the step playing (engine_step_gain) */
 
 static void brk_trigger(int v, int flags, int step)
 {
@@ -568,7 +569,7 @@ static void brk_trigger(int v, int flags, int step)
     if (grid && flags == TRIG_HIT && c->h[0].on && c->h[0].rel >= 1.f && c->h[0].b == b && c->h[0].inc > 0 &&
         (c->h[0].slice == slice || !bank_slice_exact(b, step)))
         return;
-    float vel = flags & TRIG_ROLL ? 0.7f : 1.f;
+    float vel = (flags & TRIG_ROLL ? 0.7f : 1.f) * step_gain;
     brk_play_ex(v, slice, rev, semis, vel, grid);
     c->rat_left = 0;
     if (flags & TRIG_ROLL) {
@@ -594,7 +595,7 @@ static void brk_ghost(int v, float vel)
     const int *P = song.pat.param[v];
     if (!chan_bank(v) || c->rat_left > 0 || (P[B_MODE] == MODE_GRID && c->h[0].on && c->h[0].rel >= 1.f))
         return;
-    brk_play_ex(v, live.slice[v], 0, (float)P[B_PITCH], vel, 0);
+    brk_play_ex(v, live.slice[v], 0, (float)P[B_PITCH], vel * step_gain, 0);
     Head *h = &c->h[0];
     if (h->on && h->end - h->pos > sps * h->inc)
         h->end = h->pos + sps * h->inc;
@@ -955,58 +956,129 @@ static void pattern_load_now(int i)
     song.pat = *song_slot(&song, i);
     song.groove_lock = song.slot_groove[i][0];
     song.groove_ghost = song.slot_groove[i][1];
+    song.swing = song.slot_feel[i][0];
+    song.breath = song.slot_feel[i][1];
     song_clamp();
     live.cur_slot = i;
 }
 
 static void song_switch_in(const Song *s);
 
-/* the fill's roll: the channel playing a snare (or BRK2, or the first that
- * plays at all), on a snare slice of its break */
-static int fill_channel(void)
+/* The fill's shapes over the 16ths of beats 3 and 4, as a drummer plays a
+ * funky fill rather than a roll: K kick, S snare, g a ghost snare, f a
+ * flammed snare (a grace note just before), r a 32nd pair on the snare (the
+ * one shape with anything like a roll), . nothing: the space counts too. */
+static const char *const fill_shapes[] = {
+    "S.gS.gS.", /* syncopated snares on the and and the a */
+    "K.S.KS.S", /* kick and snare answering each other */
+    "gSg.SgS.", /* ghosts around the snares */
+    "..S..S.S", /* space, then the snare pushing into the one */
+    "f.gS.gfK", /* flams, and a kick picking up the one */
+    "S.gSK.SK", /* the amen's turn, kick pickups */
+    "K.gS.gfS", /* a kick, then ghosts into a flam */
+    "g.SgS.Sr", /* a short 32nd pair at the very end */
+};
+#define NFILL ((int)(sizeof fill_shapes / sizeof fill_shapes[0]))
+const char *engine_fill_shape(int i) { return fill_shapes[clampi(i, 0, NFILL - 1)]; }
+int engine_fill_shapes(void) { return NFILL; }
+
+/* the break channel playing a slice tagged tag (preferring BRK2 for the
+ * snare, BRK1 for the kick), not muted and not running the break in GRID;
+ * else -1 */
+static int fill_channel(int tag, int skip)
 {
-    int best = -1;
+    int first = -1;
     for (int k = 0; k < NBRK; k++) {
-        int v = (k + 1) % NBRK; /* BRK2 first */
+        int v = tag == TAG_SNARE ? (k + 1) % NBRK : k;
         const Bank *b = chan_bank(v);
         const int *P = song.pat.param[v];
-        if (!b || b->nslices < 1 || song.pat.mute[v] || !song.pat.cell[v][ROW_HIT].on || P[B_MODE] == MODE_GRID)
+        if (v == skip || !b || b->nslices < 1 || song.pat.mute[v] || !song.pat.cell[v][ROW_HIT].on ||
+            P[B_MODE] == MODE_GRID)
             continue;
-        if (b->tag[clampi(P[B_SLICE], 0, b->nslices - 1)] & TAG_SNARE)
+        if (b->tag[clampi(P[B_SLICE], 0, b->nslices - 1)] & tag)
             return v;
-        if (best < 0)
-            best = v;
+        if (first < 0)
+            first = v;
     }
-    return best >= 0 ? best : 1;
+    return tag == TAG_SNARE ? first : -1;
 }
 
-/* beat 4 of the fill, 16th k (0..3): the snare, a semitone higher and louder
- * each 16th, ratcheted 1, 2, 2 then 4 times into the bar line */
-static void brk_fill_roll(int v, int k)
+/* one hit of the fill on channel v: its own slice when that is the kind
+ * wanted, else the first slice of its break with the tag. A flam is a quiet
+ * grace note with the hit 25 ms after it; a pair, two 32nds. */
+static void brk_fill_hit(int v, int tag, float vel, int flam, int pair)
 {
-    static const int rat[4] = {1, 2, 2, 4};
     BrkCh *c = &brk[v];
     const int *P = song.pat.param[v];
     const Bank *b = chan_bank(v);
     if (!b || b->nslices < 1)
         return;
     int slice = clampi(P[B_SLICE], 0, b->nslices - 1);
-    if (!(b->tag[slice] & TAG_SNARE) && bank_find_tag(b, TAG_SNARE, 0) >= 0)
-        slice = bank_find_tag(b, TAG_SNARE, 0);
-    float semis = (float)(P[B_PITCH] + k), vel = 0.6f + 0.13f * k;
-    brk_play_ex(v, slice, 0, semis, vel, 0);
-    c->rat_left = rat[k] - 1;
-    if (c->rat_left > 0) {
-        c->rat_int = (int)(sps / rat[k]);
+    if (!(b->tag[slice] & tag) && bank_find_tag(b, tag, 0) >= 0)
+        slice = bank_find_tag(b, tag, 0);
+    float semis = (float)P[B_PITCH];
+    brk_play_ex(v, slice, 0, semis, flam ? 0.3f : vel, 0);
+    c->rat_left = flam || pair;
+    if (c->rat_left) {
+        c->rat_int = flam ? (int)(0.025f * sr) : (int)(sps / 2);
         if (c->rat_int < 32)
             c->rat_int = 32;
         c->rat_cd = c->rat_int;
         c->rat_slice = slice;
         c->rat_rev = 0;
         c->rat_semis = semis;
-        c->rat_vel = vel;
+        c->rat_vel = flam ? 1.f : vel; /* the ratchet nudges it toward 1 */
     }
     live.trig_count[v]++;
+}
+
+/* step s of a fill: its shape's hit, if any, on the snare or kick channel */
+static void fill_step(int s)
+{
+    int i = (s & 15) - 8;
+    if (i < 0 || i > 7)
+        return;
+    char ch = fill_shapes[clampi(live.fill_shape, 0, NFILL - 1)][i];
+    int sv = live.fill_snare, kv = live.fill_kick >= 0 ? live.fill_kick : live.fill_snare;
+    float h = groove_hash(sv, s & 15, 0x3c6ef372u ^ (unsigned)live.fill_shape); /* a drummer's unevenness */
+    switch (ch) {
+    case 'K': brk_fill_hit(kv, TAG_KICK, 0.9f + 0.1f * h, 0, 0); break;
+    case 'S': brk_fill_hit(sv, TAG_SNARE, 0.84f + 0.16f * h, 0, 0); break;
+    case 'g': brk_fill_hit(sv, TAG_SNARE, 0.24f + 0.08f * h, 0, 0); break;
+    case 'f': brk_fill_hit(sv, TAG_SNARE, 1.f, 1, 0); break;
+    case 'r': brk_fill_hit(sv, TAG_SNARE, 0.75f, 0, 1); break;
+    }
+}
+
+/* SWING (0..25: 50% to 75%) delays the 16ths between the 8ths, up to half a
+ * 16th; BREATH (0..100) leans every hit but the beats a little late, more
+ * on some than others (the same every bar), up to 6% of a 16th */
+static int defer_s = -1, defer_fill;
+static double defer_cd;
+static void play_step(int s, int filling);
+
+static double step_delay(int s)
+{
+    int i = s & 15;
+    double d = 0.0;
+    if (i & 1)
+        d += song.swing / 50.0 * sps;
+    if (song.breath && (i & 3))
+        d += song.breath / 100.0 * 0.06 * sps * groove_hash(7, i, 0x510e527fu);
+    return d;
+}
+
+/* BREATH's dynamics: the beats as they are, the 8th offbeats a little softer,
+ * the 16ths between softer still, and each four bars swelling into the
+ * fourth; 1 everywhere at 0 */
+float engine_step_gain(int s)
+{
+    if (!song.breath)
+        return 1.f;
+    float b = song.breath / 100.f;
+    int i = s & 15, bar = s >> 4 & 3;
+    float g = (i & 3) == 0 ? 1.f : (i & 1) == 0 ? 1.f - 0.15f * b : 1.f - 0.32f * b;
+    return g * (1.f - 0.12f * b * (3 - bar) / 3.f);
 }
 
 static void fire_step(void)
@@ -1029,16 +1101,42 @@ static void fire_step(void)
     int filling = live.fill_to > 0 && s >= live.fill_from && s < live.fill_to;
     if (live.fill_to > 0 && s >= live.fill_to)
         live.fill_to = 0; /* over at the bar line */
+    /* swing and BREATH's lean move the hits a little after the step; the
+     * step itself (the transport, the clock, the sync) stays on the grid */
+    if (defer_s >= 0)
+        play_step(defer_s, defer_fill);
+    double late = step_delay(s);
+    if (late >= 1.0) {
+        defer_s = s, defer_fill = filling, defer_cd = late;
+        return;
+    }
+    play_step(s, filling);
+}
+
+static void play_step(int s, int filling)
+{
+    defer_s = -1;
+    step_gain = engine_step_gain(s);
+    if (filling) {
+        /* the drummer leaves the groove: the kick and snare channels play the
+         * fill, and a break running in GRID stops to make room for it */
+        for (int v = 0; v < NBRK; v++)
+            if (s == live.fill_from && v != live.fill_snare && v != live.fill_kick &&
+                song.pat.param[v][B_MODE] == MODE_GRID) {
+                head_release(&brk[v].h[0]);
+                head_release(&brk[v].h[1]);
+                brk[v].rat_left = 0;
+            }
+        fill_step(s);
+    }
     for (int v = 0; v < NV; v++) {
-        if (filling && v == live.fill_v && (s & 15) >= 12) {
-            brk_fill_roll(v, (s & 15) - 12);
+        if (filling && v < NBRK &&
+            (v == live.fill_snare || v == live.fill_kick || song.pat.param[v][B_MODE] == MODE_GRID))
             continue;
-        }
         int flags = groove_flags(v, s);
         if (!flags) {
-            /* in the fill, ghost notes all the way, the way the groove has them (after the hits unless before) */
             float g = groove_ghost_now();
-            float gv = filling ? ghost_at(v, s, g < 0.f ? -1.f : 1.f, 1) : g != 0.f ? groove_ghost_at(v, s) : 0.f;
+            float gv = g != 0.f ? groove_ghost_at(v, s) : 0.f;
             if (gv > 0.f)
                 brk_ghost(v, gv);
             continue;
@@ -1048,6 +1146,7 @@ static void fire_step(void)
         else
             brk_trigger(v, flags, s);
     }
+    step_gain = 1.f;
 }
 
 void engine_set_playing(int on)
@@ -1061,6 +1160,7 @@ void engine_set_playing(int on)
     }
     if (!on) {
         live.fill_to = 0;
+        defer_s = -1;
         bass.gate = 0;
         for (int v = 0; v < NBRK; v++) {
             brk[v].rat_left = 0;
@@ -1085,7 +1185,17 @@ int engine_fill(void)
         live.fill_from = n, live.fill_to = bar + 16;
     else
         live.fill_from = bar + 24, live.fill_to = bar + 32;
-    live.fill_v = fill_channel();
+    static unsigned fills;
+    int shape = (int)(groove_hash(0, 0, 0x9b05688cu + ++fills * 0x632be5abu) * NFILL);
+    if (shape == live.fill_shape) /* never the same one twice running */
+        shape = (shape + 1 + (int)(fills % (NFILL - 1))) % NFILL;
+    if (shape == live.fill_shape)
+        shape = (shape + 1) % NFILL;
+    live.fill_shape = shape;
+    live.fill_snare = fill_channel(TAG_SNARE, -1);
+    if (live.fill_snare < 0)
+        live.fill_snare = 1;
+    live.fill_kick = fill_channel(TAG_KICK, live.fill_snare);
     return 1;
 }
 
@@ -1301,6 +1411,8 @@ void engine_render(int16_t *out, int frames)
                 step_phase += sps;
                 fire_step();
             }
+            else if (defer_s >= 0 && (defer_cd -= sync_rate) <= 0.0)
+                play_step(defer_s, defer_fill);
         }
         float L = 0.f, R = 0.f, verb_in = 0.f;
         for (int v = 0; v < NBRK; v++) {
@@ -1716,6 +1828,8 @@ void slot_save(int i)
     *song_slot_used(&song, i) = 1;
     song.slot_groove[i][0] = song.groove_lock;
     song.slot_groove[i][1] = song.groove_ghost;
+    song.slot_feel[i][0] = song.swing;
+    song.slot_feel[i][1] = song.breath;
     live.cur_slot = i;
 }
 
@@ -1733,6 +1847,7 @@ void slot_clear(int i)
 {
     *song_slot_used(&song, i) = 0;
     song.slot_groove[i][0] = song.slot_groove[i][1] = 0;
+    song.slot_feel[i][0] = song.slot_feel[i][1] = 0;
     if (live.cur_slot == i)
         live.cur_slot = -1;
     if (live.queued_slot == i)
@@ -1854,10 +1969,14 @@ static int song_read(const char *path, Song *s)
         *song_slot_used(s, i) = *song_slot_used(s, i) != 0;
         for (int k = 0; k < 2; k++)
             s->slot_groove[i][k] = (int8_t)clampi(s->slot_groove[i][k], -100, 100);
+        s->slot_feel[i][0] = (int8_t)clampi(s->slot_feel[i][0], 0, 25);
+        s->slot_feel[i][1] = (int8_t)clampi(s->slot_feel[i][1], 0, 100);
     }
     s->groove_lock = (int8_t)clampi(s->groove_lock, -100, 100);
     s->groove_ghost = (int8_t)clampi(s->groove_ghost, -100, 100);
     s->switch_div = (uint8_t)clampi(s->switch_div, 0, NSWITCH - 1);
+    s->swing = (int8_t)clampi(s->swing, 0, 25);
+    s->breath = (int8_t)clampi(s->breath, 0, 100);
     for (int k = 0; k < NSCENE; k++) {
         s->scene_used[k] = s->scene_used[k] != 0;
         for (int v = 0; v < NV; v++)

@@ -80,11 +80,12 @@ static const char *const mxm_names[NMXM] = {"LEVEL", "GLUE", "DRIVE", "VERB", "T
 
 /* song page stops: slots A..J (two rows of five), then TEMPO and SYNC */
 #define SG_COLS 5
-#define SG_TEMPO NSLOT
-#define SG_SYNC (NSLOT + 1)
-#define SG_OUT (NSLOT + 2) /* OUTPUT, CLOCK ON, PPQN, PULSE: left / right picks one */
-#define SG_PLAY (NSLOT + 3) /* SWITCH ON, SONG: left / right picks one */
+#define SG_TEMPO NSLOT       /* TEMPO, SYNC: left / right picks one */
+#define SG_OUT (NSLOT + 1)   /* OUTPUT, CLOCK ON, PPQN, PULSE */
+#define SG_GRV (NSLOT + 2)   /* the groove kept with the pattern: LOCK, GHOSTS, SWING, BREATH */
+#define SG_PLAY (NSLOT + 3)  /* SWITCH ON, SONG */
 #define SG_N (NSLOT + 4)
+static int ts_f, grv_f;
 static int play_f;
 /* song files songs/song01.sav .. song16.sav: the one picked, the one last
  * loaded or saved (-1), which exist (a bit each), and a save over one waiting
@@ -151,15 +152,22 @@ static void groove_words(char *buf, int n)
     snprintf(buf, n, "%s  %s", a, b);
 }
 
-/* the kept groove, short, for the header: B40 >25 (C for the clave, < before) */
+static int groove_kept(void) { return song.groove_lock || song.groove_ghost || song.swing || song.breath; }
+
+/* the kept groove, short, for the footer: B40 >25 SW58 BR30 (C for the
+ * clave, < before the hits, SW the swing, BR the breath) */
 static void groove_short(char *buf, int n)
 {
     int l = song.groove_lock, g = song.groove_ghost, k = 0;
     buf[0] = 0;
     if (l)
-        k = snprintf(buf, n, " %c%d", l > 0 ? 'B' : 'C', l > 0 ? l : -l);
+        k += snprintf(buf + k, n - k, " %c%d", l > 0 ? 'B' : 'C', l > 0 ? l : -l);
     if (g && k < n)
-        snprintf(buf + k, n - k, " %c%d", g > 0 ? '>' : '<', g > 0 ? g : -g);
+        k += snprintf(buf + k, n - k, " %c%d", g > 0 ? '>' : '<', g > 0 ? g : -g);
+    if (song.swing && k < n)
+        k += snprintf(buf + k, n - k, " SW%d", 50 + song.swing);
+    if (song.breath && k < n)
+        snprintf(buf + k, n - k, " BR%d", song.breath);
 }
 
 static void groove_say(const char *what)
@@ -182,7 +190,7 @@ static void groove_keep(void)
 
 static void groove_clear(void)
 {
-    song.groove_lock = song.groove_ghost = 0;
+    song.groove_lock = song.groove_ghost = song.swing = song.breath = 0;
     groove_acc[0] = groove_acc[1] = 0.f;
     say("GROOVE OFF");
 }
@@ -581,6 +589,29 @@ static void mix_action(int b, int repeats)
     }
 }
 
+/* the SONG page's GROOVE row: the groove kept with the pattern (and saved
+ * with it into a slot): LOCK -100 (the clave) .. 100 (the breakbeats), GHOSTS
+ * -100 (before the hits) .. 100 (after), SWING 50% .. 75%, BREATH 0 .. 100.
+ * X / Y change it, faster held; A sets it back to none */
+static void grv_action(int b, int repeats)
+{
+    if (b != BTN_X && b != BTN_Y && b != BTN_A)
+        return;
+    int d = b == BTN_Y ? -1 : 1, st = repeats > 12 ? 5 : 1;
+    switch (grv_f) {
+    case 0: song.groove_lock = (int8_t)(b == BTN_A ? 0 : clampi(song.groove_lock + d * st, -100, 100)); break;
+    case 1: song.groove_ghost = (int8_t)(b == BTN_A ? 0 : clampi(song.groove_ghost + d * st, -100, 100)); break;
+    case 2: song.swing = (int8_t)(b == BTN_A ? 0 : clampi(song.swing + d, 0, 25)); break;
+    case 3: song.breath = (int8_t)(b == BTN_A ? 0 : clampi(song.breath + d * st, 0, 100)); break;
+    }
+    if (grv_f < 2)
+        groove_say("GROOVE  ");
+    else if (grv_f == 2)
+        say(song.swing ? "SWING %d%%" : "STRAIGHT (SWING 50%%)", 50 + song.swing);
+    else
+        say(song.breath ? "BREATH %d" : "NO BREATH", song.breath);
+}
+
 /* the SONG page's last row: SWITCH ON (when a slot or song switches in) and
  * SONG (the song files: X / Y picks one, A loads it, B saves the set to it,
  * a second B to save over one) */
@@ -654,8 +685,12 @@ static void song_action(int b, int repeats)
         int d = b == BTN_RIGHT ? 1 : -1;
         if (song_cur < NSLOT)
             song_cur = (song_cur / SG_COLS) * SG_COLS + wrap(song_cur % SG_COLS + d, SG_COLS);
+        else if (song_cur == SG_TEMPO)
+            ts_f = wrap(ts_f + d, 2);
         else if (song_cur == SG_OUT)
             out_f = wrap(out_f + d, 4);
+        else if (song_cur == SG_GRV)
+            grv_f = wrap(grv_f + d, 4);
         else if (song_cur == SG_PLAY)
             play_f = wrap(play_f + d, 2);
         song_confirm = -1;
@@ -665,14 +700,18 @@ static void song_action(int b, int repeats)
         play_action(b, repeats);
         return;
     }
-    if (song_cur == SG_TEMPO) {
+    if (song_cur == SG_GRV) {
+        grv_action(b, repeats);
+        return;
+    }
+    if (song_cur == SG_TEMPO && ts_f == 0) {
         if (b == BTN_X || b == BTN_Y) {
             float st = repeats > 12 ? 2.f : repeats ? 1.f : 0.5f;
             song.bpm = fminf(250.f, fmaxf(40.f, song.bpm + (b == BTN_X ? st : -st)));
         }
         return;
     }
-    if (song_cur == SG_SYNC) {
+    if (song_cur == SG_TEMPO) {
         if ((b == BTN_X || b == BTN_Y || b == BTN_A) && !repeats) {
             song.sync_mode = wrap(song.sync_mode + (b == BTN_Y ? -1 : 1), NSYNCMODE);
             engine_set_rate(1.0);
@@ -851,7 +890,8 @@ static int repeatable(int b)
     if (held[BTN_R2])
         return 0;
     if (b == BTN_X || b == BTN_Y)
-        return page != PAGE_SONG || song_cur == SG_TEMPO || (song_cur == SG_OUT && out_f >= 2) ||
+        return page != PAGE_SONG || (song_cur == SG_TEMPO && ts_f == 0) || (song_cur == SG_OUT && out_f >= 2) ||
+               (song_cur == SG_GRV && grv_f != 2) ||
                (song_cur == SG_PLAY && play_f == 1);
     return 0;
 }
@@ -1042,7 +1082,7 @@ static void draw_header(void)
      * Brick's R2 + the d-pad playing it */
     {
         /* lit while a groove plays, live or kept with the pattern (the footer shows the kept one) */
-        int on = live.groove_lock != 0.f || live.groove_ghost != 0.f || song.groove_lock || song.groove_ghost;
+        int on = live.groove_lock != 0.f || live.groove_ghost != 0.f || groove_kept();
         if (left_groove == 1 || on)
             badge(&bx, "GRV", on ? 0x7ad87a : C_PANEL2, on ? 0x000000 : C_DIM);
     }
@@ -1081,16 +1121,16 @@ static void draw_footer(void)
     };
     const char *hint = hints[page];
     if (page == PAGE_SONG && song_cur >= NSLOT)
-        hint = song_cur == SG_TEMPO   ? "X/Y:TEMPO  R2+X:TAP"
-               : song_cur == SG_SYNC  ? "X/Y:SYNC MODE"
+        hint = song_cur == SG_TEMPO   ? (ts_f == 0 ? "<>:SETTING  X/Y:TEMPO  R2+X:TAP" : "<>:SETTING  X/Y:SYNC MODE")
                : song_cur == SG_OUT   ? "<>:SETTING  X/Y:+/-"
+               : song_cur == SG_GRV   ? "<>:SETTING  X/Y:+/-  A:OFF"
                : play_f == 0          ? "<>:SETTING  X/Y:SWITCH ON"
                                       : "<>:SETTING  X/Y:SONG  A:LOAD  B:SAVE";
     gfx_fill(0, FOOTER_Y, SCREEN_W, SCREEN_H - FOOTER_Y, C_PANEL);
     gfx_text(10, FOOTER_Y + 3, hint, C_DIM, FONT_SMALL);
-    if (song.groove_lock || song.groove_ghost) {
+    if (groove_kept()) {
         /* the groove kept with the pattern: B80 >39 (C the clave, < before the hits) */
-        char g[24], k[16];
+        char g[40], k[32];
         groove_short(k, sizeof k);
         snprintf(g, sizeof g, "GRV%s", k);
         text_r(SCREEN_W - 10, FOOTER_Y + 3, g, 0x7ad87a, FONT_SMALL);
@@ -1382,7 +1422,7 @@ static void draw_song(void)
                     if (c->on && euclid_hit(c, k))
                         gfx_fill(x + 34 + k * 5, y + 14 + v * 12, 4, 9, vcol[v]);
             }
-            if (song.slot_groove[i][0] || song.slot_groove[i][1])
+            if (song.slot_groove[i][0] || song.slot_groove[i][1] || song.slot_feel[i][0] || song.slot_feel[i][1])
                 gfx_text(x + 10, y + h - 50, "G", 0x7ad87a, FONT_SMALL);
         }
         else
@@ -1391,31 +1431,33 @@ static void draw_song(void)
             gfx_text(x + 8, y + h - 26, "NEXT", C_ACCENT, FONT_SMALL);
     }
     int y = BODY_Y + 200;
-    const char *labels[2] = {"TEMPO", "WIFI SYNC"};
-    for (int r = 0; r < 2; r++) {
-        int yy = y + r * 44, sel = song_cur == SG_TEMPO + r;
-        gfx_fill(8, yy, 624, 38, sel ? C_PANEL2 : C_PANEL);
-        gfx_rect(8, yy, 624, 38, sel ? 2 : 1, sel ? C_ACCENT : C_LINE);
-        gfx_text(20, yy + 8, labels[r], sel ? C_TEXT : C_DIM, FONT_SMALL);
+    /* TEMPO and SYNC in one row */
+    for (int k = 0; k < 2; k++) {
+        int x = 8 + k * 316, w = 308, sel = song_cur == SG_TEMPO && ts_f == k;
+        gfx_fill(x, y, w, 38, sel ? C_PANEL2 : C_PANEL);
+        gfx_rect(x, y, w, 38, sel ? 2 : 1, sel ? C_ACCENT : C_LINE);
+        gfx_text(x + 10, y + 8, k ? "SYNC" : "TEMPO", sel ? C_TEXT : C_DIM, FONT_SMALL);
         char val[48];
-        if (r == 0)
+        if (k == 0)
             snprintf(val, sizeof val, "%.1f BPM", song.bpm);
         else {
             const SyncStatus *ss = sync_status();
             if (song.sync_mode == SYNC_OFF)
                 snprintf(val, sizeof val, "OFF");
             else if (ss->have_leader)
-                snprintf(val, sizeof val, "%s  FOLLOWING  %+.0f MS", sync_mode_names[song.sync_mode], ss->offset_ms);
+                snprintf(val, sizeof val, "%s  FOLLOWING %+.0fMS", sync_mode_names[song.sync_mode], ss->offset_ms);
             else if (ss->leading && ss->peers)
                 snprintf(val, sizeof val, "%s  LEADING %d", sync_mode_names[song.sync_mode], ss->peers);
             else
                 snprintf(val, sizeof val, "%s  ALONE", sync_mode_names[song.sync_mode]);
         }
-        text_r(620, yy + 8, val, C_TEXT, FONT_SMALL);
+        text_r(x + w - 10, y + 8, val, C_TEXT, FONT_SMALL);
     }
+    y -= 44; /* the rows below as they were, one row up */
     /* the output: four settings in one row */
     {
         int yy = y + 88, row = song_cur == SG_OUT, clk = song.out_mode == OUT_MONO_CLOCK;
+        /* (y + 132 below is the GROOVE row, y + 176 SWITCH and SONG) */
         static const char *const nm[4] = {"OUTPUT", "CLOCK ON", "PPQN", "PULSE"};
         for (int k = 0; k < 4; k++) {
             int x = 8 + k * 157, w = 150, sel = row && out_f == k, on = k == 0 || clk;
@@ -1434,9 +1476,31 @@ static void draw_song(void)
             text_r(x + w - 10, yy + 8, val, on ? (k == 0 && clk ? C_ACCENT : C_TEXT) : C_DIM, FONT_SMALL);
         }
     }
+    /* the groove kept with the pattern */
+    {
+        int yy = y + 132, row = song_cur == SG_GRV;
+        static const char *const nm[4] = {"LOCK", "GHOSTS", "SWING", "BREATH"};
+        for (int k = 0; k < 4; k++) {
+            int x = 8 + k * 157, w = 150, sel = row && grv_f == k;
+            gfx_fill(x, yy, w, 38, sel ? C_PANEL2 : C_PANEL);
+            gfx_rect(x, yy, w, 38, sel ? 2 : 1, sel ? 0x7ad87a : C_LINE);
+            gfx_text(x + 10, yy + 8, nm[k], sel ? C_TEXT : C_DIM, FONT_SMALL);
+            char val[16];
+            int l = song.groove_lock, g = song.groove_ghost, on;
+            if (k == 0)
+                on = l != 0, snprintf(val, sizeof val, l ? "%c%d" : "OFF", l > 0 ? 'B' : 'C', l > 0 ? l : -l);
+            else if (k == 1)
+                on = g != 0, snprintf(val, sizeof val, g ? "%c%d" : "OFF", g > 0 ? '>' : '<', g > 0 ? g : -g);
+            else if (k == 2)
+                on = song.swing != 0, snprintf(val, sizeof val, "%d%%", 50 + song.swing);
+            else
+                on = song.breath != 0, snprintf(val, sizeof val, song.breath ? "%d" : "OFF", song.breath);
+            text_r(x + w - 10, yy + 8, val, on ? 0x7ad87a : C_DIM, FONT_SMALL);
+        }
+    }
     /* when a slot or song switches in, and the song files */
     {
-        int yy = y + 132, row = song_cur == SG_PLAY;
+        int yy = y + 176, row = song_cur == SG_PLAY;
         for (int k = 0; k < 2; k++) {
             int x = 8 + k * 157, w = 150, sel = row && play_f == k;
             int next = k == 1 && live.queued_song;
