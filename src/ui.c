@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "breaks.h"
 #include "engine.h"
@@ -75,11 +77,27 @@ enum { MM_LEVEL, MM_GLUE, MM_DRIVE, MM_VERB, MM_TONE, MM_SWEEP, NMXM };
 static const char *const mxv_names[NMXV] = {"LEVEL", "PAN", "SEND"};
 static const char *const mxm_names[NMXM] = {"LEVEL", "GLUE", "DRIVE", "VERB", "TONE", "L2"};
 
-/* song page stops: slots A..H, then TEMPO and SYNC */
+/* song page stops: slots A..J (two rows of five), then TEMPO and SYNC */
+#define SG_COLS 5
 #define SG_TEMPO NSLOT
 #define SG_SYNC (NSLOT + 1)
 #define SG_OUT (NSLOT + 2) /* OUTPUT, CLOCK ON, PPQN, PULSE: left / right picks one */
-#define SG_N (NSLOT + 3)
+#define SG_PLAY (NSLOT + 3) /* SWITCH ON, SONG: left / right picks one */
+#define SG_N (NSLOT + 4)
+static int play_f;
+/* song files songs/song01.sav .. song16.sav: the one picked, the one last
+ * loaded or saved (-1), which exist (a bit each), and a save over one waiting
+ * for a second B */
+static const char *song_dir = "songs";
+static int song_no, song_cur_no = -1, song_confirm = -1;
+static uint32_t songs_there, songs_seen;
+/* the Brick Pro's left stick as last read, and what the side switch gives it;
+ * R2 + the stick changes the groove kept with the pattern, at this many
+ * hundredths a second all the way over */
+static float lstick_x, lstick_up;
+static int lstick_groove;
+static float groove_acc[2];
+#define GROOVE_EDIT_RATE 80.f
 static int out_f;
 
 static void say(const char *fmt, ...)
@@ -91,10 +109,137 @@ static void say(const char *fmt, ...)
     toast_ms = 1400;
 }
 
+static int clampi(int x, int lo, int hi);
+
+/* ------------------------------------------------------- song files */
+
+static void song_path(int n, char *buf, int len) { snprintf(buf, len, "%s/song%02d.sav", song_dir, n + 1); }
+
+static void songs_scan(void)
+{
+    songs_there = 0;
+    for (int n = 0; n < NSONG; n++) {
+        char p[512];
+        song_path(n, p, sizeof p);
+        if (access(p, R_OK) == 0)
+            songs_there |= 1u << n;
+    }
+}
+
+void ui_set_song_dir(const char *dir)
+{
+    song_dir = dir;
+    songs_scan();
+}
+
+/* ----------------------------------------------------------- the groove */
+
+/* the kept groove as words: BREAKS 40%  GHOSTS AFTER 25% */
+static void groove_words(char *buf, int n)
+{
+    char a[24], b[32];
+    int l = song.groove_lock, g = song.groove_ghost;
+    if (l)
+        snprintf(a, sizeof a, "%s %d%%", l > 0 ? "BREAKS" : "CLAVE", l > 0 ? l : -l);
+    else
+        snprintf(a, sizeof a, "NO LOCK");
+    if (g)
+        snprintf(b, sizeof b, "GHOSTS %s %d%%", g > 0 ? "AFTER" : "BEFORE", g > 0 ? g : -g);
+    else
+        snprintf(b, sizeof b, "NO GHOSTS");
+    snprintf(buf, n, "%s  %s", a, b);
+}
+
+/* the kept groove, short, for the header: B40 >25 (C for the clave, < before) */
+static void groove_short(char *buf, int n)
+{
+    int l = song.groove_lock, g = song.groove_ghost, k = 0;
+    buf[0] = 0;
+    if (l)
+        k = snprintf(buf, n, " %c%d", l > 0 ? 'B' : 'C', l > 0 ? l : -l);
+    if (g && k < n)
+        snprintf(buf + k, n - k, " %c%d", g > 0 ? '>' : '<', g > 0 ? g : -g);
+}
+
+static void groove_say(const char *what)
+{
+    char w[64];
+    groove_words(w, sizeof w);
+    say("%s%s", what, w);
+}
+
+/* R2 + A: keep the groove playing now (the Brick's R2 + the d-pad), each part
+ * that plays; R2 + B (or R2 + L3): no groove kept */
+static void groove_keep(void)
+{
+    if (live.groove_lock != 0.f)
+        song.groove_lock = (int8_t)clampi((int)lroundf(live.groove_lock * 100.f), -100, 100);
+    if (live.groove_ghost != 0.f)
+        song.groove_ghost = (int8_t)clampi((int)lroundf(live.groove_ghost * 100.f), -100, 100);
+    groove_say("KEPT  ");
+}
+
+static void groove_clear(void)
+{
+    song.groove_lock = song.groove_ghost = 0;
+    groove_acc[0] = groove_acc[1] = 0.f;
+    say("GROOVE OFF");
+}
+
+/* the Brick Pro's left stick: the filter (switch down) or the groove played
+ * live (switch up); with R2 held it changes the kept groove instead (ui_tick),
+ * so it plays nothing live */
+static void left_stick_apply(void)
+{
+    if (l2_sticks)
+        return;
+    int edit = held[BTN_R2] && !upd_open;
+    float x = lstick_x, up = lstick_up, amount = sqrtf(x * x + up * up);
+    live.sweep_hand = !edit && !lstick_groove ? fminf(1.f, amount) : 0.f;
+    /* squared, so the first part of the travel is the slight variations */
+    live.groove_lock = !edit && lstick_groove ? up * fabsf(up) : 0.f;
+    live.groove_ghost = !edit && lstick_groove ? x * fabsf(x) : 0.f;
+}
+
+void ui_left_stick(float x, float up, int groove)
+{
+    ui_lock();
+    lstick_x = x, lstick_up = up, lstick_groove = groove;
+    left_stick_apply();
+    ui_unlock();
+}
+
+/* R2 + the left stick held over: the kept groove moves, faster the further over */
+static void groove_edit(int ms)
+{
+    if (l2_sticks || !held[BTN_R2] || upd_open || (lstick_x == 0.f && lstick_up == 0.f))
+        return;
+    float r = GROOVE_EDIT_RATE * ms / 1000.f;
+    groove_acc[0] += lstick_up * fabsf(lstick_up) * r;
+    groove_acc[1] += lstick_x * fabsf(lstick_x) * r;
+    int8_t *f[2] = {&song.groove_lock, &song.groove_ghost};
+    int moved = 0;
+    for (int k = 0; k < 2; k++) {
+        int d = (int)groove_acc[k];
+        if (!d)
+            continue;
+        groove_acc[k] -= d;
+        int x = clampi(*f[k] + d, -100, 100);
+        moved |= x != *f[k];
+        *f[k] = (int8_t)x;
+    }
+    if (moved) {
+        groove_say("GROOVE  ");
+        changed = 1;
+    }
+}
+
 void ui_init(void)
 {
     for (int v = 0; v < NV; v++)
         seen_trig[v] = live.trig_count[v];
+    songs_seen = live.songs_loaded;
+    songs_scan();
 }
 
 void ui_set_update(const UpdateStatus *status, void (*install)(void))
@@ -257,7 +402,10 @@ void ui_tap_tempo(void)
     if (upd_open)
         return;
     ui_lock();
-    tap_tempo();
+    if (held[BTN_R2])
+        groove_clear(); /* R2 + L3 */
+    else
+        tap_tempo();
     changed = 1;
     ui_unlock();
 }
@@ -416,25 +564,88 @@ static void mix_action(int b, int repeats)
     }
 }
 
+/* the SONG page's last row: SWITCH ON (when a slot or song switches in) and
+ * SONG (the song files: X / Y picks one, A loads it, B saves the set to it,
+ * a second B to save over one) */
+static void play_action(int b, int repeats)
+{
+    if (play_f == 0) {
+        if ((b == BTN_X || b == BTN_Y || b == BTN_A) && !repeats) {
+            song.switch_div = (uint8_t)clampi(song.switch_div + (b == BTN_Y ? -1 : 1), 0, NSWITCH - 1);
+            say("SLOTS AND SONGS SWITCH ON THE NEXT %s", switch_name(song.switch_div));
+        }
+        return;
+    }
+    char p[512];
+    song_path(song_no, p, sizeof p);
+    switch (b) {
+    case BTN_X:
+    case BTN_Y:
+        song_no = clampi(song_no + (b == BTN_X ? 1 : -1), 0, NSONG - 1);
+        song_confirm = -1;
+        break;
+    case BTN_A:
+        if (repeats)
+            break;
+        if (!(songs_there >> song_no & 1) || !song_file_load(p)) {
+            say("SONG %d IS EMPTY", song_no + 1);
+            break;
+        }
+        song_cur_no = song_no;
+        if (live.playing)
+            say("SONG %d AT THE NEXT %s", song_no + 1, switch_name(song.switch_div));
+        else
+            say("LOADED SONG %d", song_no + 1);
+        break;
+    case BTN_B:
+        if (repeats)
+            break;
+        if (songs_there >> song_no & 1 && song_confirm != song_no) {
+            song_confirm = song_no;
+            say("B AGAIN TO SAVE OVER SONG %d", song_no + 1);
+            break;
+        }
+        song_confirm = -1;
+        mkdir(song_dir, 0755);
+        if (song_file_save(p, ui_full_bpm())) {
+            songs_there |= 1u << song_no;
+            song_cur_no = song_no;
+            say("SAVED SONG %d", song_no + 1);
+        }
+        else
+            say("COULDN'T SAVE SONG %d", song_no + 1);
+        break;
+    }
+}
+
 static void song_action(int b, int repeats)
 {
     if (b == BTN_UP || b == BTN_DOWN) {
         int d = b == BTN_DOWN ? 1 : -1;
         if (song_cur < NSLOT) {
-            int r = song_cur / 4 + d;
-            song_cur = r < 0 ? SG_N - 1 : r < 2 ? r * 4 + song_cur % 4 : SG_TEMPO;
+            int r = song_cur / SG_COLS + d;
+            song_cur = r < 0 ? SG_N - 1 : r < NSLOT / SG_COLS ? r * SG_COLS + song_cur % SG_COLS : SG_TEMPO;
         }
         else {
             int s = song_cur + d;
-            song_cur = s < SG_TEMPO ? 4 : s >= SG_N ? 0 : s;
+            song_cur = s < SG_TEMPO ? NSLOT - SG_COLS : s >= SG_N ? 0 : s;
         }
+        song_confirm = -1;
         return;
     }
     if (b == BTN_LEFT || b == BTN_RIGHT) {
+        int d = b == BTN_RIGHT ? 1 : -1;
         if (song_cur < NSLOT)
-            song_cur = (song_cur / 4) * 4 + wrap(song_cur % 4 + (b == BTN_RIGHT ? 1 : -1), 4);
+            song_cur = (song_cur / SG_COLS) * SG_COLS + wrap(song_cur % SG_COLS + d, SG_COLS);
         else if (song_cur == SG_OUT)
-            out_f = wrap(out_f + (b == BTN_RIGHT ? 1 : -1), 4);
+            out_f = wrap(out_f + d, 4);
+        else if (song_cur == SG_PLAY)
+            play_f = wrap(play_f + d, 2);
+        song_confirm = -1;
+        return;
+    }
+    if (song_cur == SG_PLAY) {
+        play_action(b, repeats);
         return;
     }
     if (song_cur == SG_TEMPO) {
@@ -476,11 +687,11 @@ static void song_action(int b, int repeats)
     int i = song_cur;
     switch (b) {
     case BTN_A:
-        if (!song.slot_used[i])
+        if (!*song_slot_used(&song, i))
             say("SLOT %c IS EMPTY", 'A' + i);
         else {
             slot_load(i);
-            say(live.playing ? "%c AT THE NEXT BAR" : "LOADED %c", 'A' + i);
+            say(live.playing ? "%c AT THE NEXT %s" : "LOADED %c", 'A' + i, switch_name(song.switch_div));
         }
         break;
     case BTN_X:
@@ -623,7 +834,8 @@ static int repeatable(int b)
     if (held[BTN_R2])
         return 0;
     if (b == BTN_X || b == BTN_Y)
-        return page != PAGE_SONG || song_cur == SG_TEMPO || (song_cur == SG_OUT && out_f >= 2);
+        return page != PAGE_SONG || song_cur == SG_TEMPO || (song_cur == SG_OUT && out_f >= 2) ||
+               (song_cur == SG_PLAY && play_f == 1);
     return 0;
 }
 
@@ -646,6 +858,8 @@ void ui_button(int b, int down)
     }
     else if (b == BTN_L2)
         live.filter_held = down;
+    if (b == BTN_R2) /* R2 + the Brick Pro's left stick edits the kept groove rather than playing */
+        left_stick_apply();
     if (down && is_dpad(b) && !upd_open)
         note_dpad_press(b);
     if (upd_open) {
@@ -659,6 +873,14 @@ void ui_button(int b, int down)
             note_face_press(b);
         if (b == BTN_B)
             b_used = 1;
+    }
+    else if (down && held[BTN_R2] && (b == BTN_A || b == BTN_B)) {
+        /* R2 + A keeps the groove playing, R2 + B lets it go, on any page */
+        if (b == BTN_A)
+            groove_keep();
+        else
+            groove_clear(), b_used = 1;
+        changed = 1;
     }
     else if (b == BTN_B && page == PAGE_PATTERN) {
         if (down)
@@ -677,6 +899,21 @@ void ui_button(int b, int down)
 void ui_tick(int ms)
 {
     now_ms += ms;
+    ui_lock();
+    groove_edit(ms);
+    if (live.songs_loaded != songs_seen) {
+        /* a song switched in: its mutes and solos replace any scene's, and
+         * half time stays on at half the song's tempo */
+        songs_seen = live.songs_loaded;
+        scene_on = -1;
+        if (half_on) {
+            half_from = song.bpm;
+            song.bpm = fmaxf(40.f, roundf(song.bpm * 5.f) / 10.f);
+            half_to = song.bpm;
+        }
+        changed = 1;
+    }
+    ui_unlock();
     if (toast_ms > 0)
         toast_ms -= ms;
     if (upd && upd->state == UP_AVAILABLE && !upd_asked)
@@ -777,8 +1014,12 @@ static void draw_header(void)
         badge(&bx, "1/2", 0x46b4ff, 0x000000);
     /* the Brick Pro's side switch up (the left stick plays the groove), or the
      * Brick's R2 + the d-pad playing it */
-    if (left_groove == 1 || (l2_sticks && (live.groove_lock != 0.f || live.groove_ghost != 0.f)))
-        badge(&bx, "GRV", 0x7ad87a, 0x000000);
+    {
+        /* lit while a groove plays, live or kept with the pattern (the footer shows the kept one) */
+        int on = live.groove_lock != 0.f || live.groove_ghost != 0.f || song.groove_lock || song.groove_ghost;
+        if (left_groove == 1 || on)
+            badge(&bx, "GRV", on ? 0x7ad87a : C_PANEL2, on ? 0x000000 : C_DIM);
+    }
     if (song.sync_mode != SYNC_OFF) {
         const SyncStatus *ss = sync_status();
         int linked = ss->leading || ss->have_leader;
@@ -812,10 +1053,22 @@ static void draw_footer(void)
     };
     const char *hint = hints[page];
     if (page == PAGE_SONG && song_cur >= NSLOT)
-        hint = song_cur == SG_TEMPO ? "X/Y:TEMPO  R2+X:TAP" : song_cur == SG_SYNC ? "X/Y:SYNC MODE" : "<>:SETTING  X/Y:+/-";
+        hint = song_cur == SG_TEMPO   ? "X/Y:TEMPO  R2+X:TAP"
+               : song_cur == SG_SYNC  ? "X/Y:SYNC MODE"
+               : song_cur == SG_OUT   ? "<>:SETTING  X/Y:+/-"
+               : play_f == 0          ? "<>:SETTING  X/Y:SWITCH ON"
+                                      : "<>:SETTING  X/Y:SONG  A:LOAD  B:SAVE";
     gfx_fill(0, FOOTER_Y, SCREEN_W, SCREEN_H - FOOTER_Y, C_PANEL);
     gfx_text(10, FOOTER_Y + 3, hint, C_DIM, FONT_SMALL);
-    text_r(SCREEN_W - 10, FOOTER_Y + 3, "SEL:NEW BEAT", C_DIM, FONT_SMALL);
+    if (song.groove_lock || song.groove_ghost) {
+        /* the groove kept with the pattern: B80 >39 (C the clave, < before the hits) */
+        char g[24], k[16];
+        groove_short(k, sizeof k);
+        snprintf(g, sizeof g, "GRV%s", k);
+        text_r(SCREEN_W - 10, FOOTER_Y + 3, g, 0x7ad87a, FONT_SMALL);
+    }
+    else
+        text_r(SCREEN_W - 10, FOOTER_Y + 3, "SEL:NEW BEAT", C_DIM, FONT_SMALL);
 }
 
 static void draw_toast(void)
@@ -1086,26 +1339,28 @@ static void draw_mix(void)
 static void draw_song(void)
 {
     for (int i = 0; i < NSLOT; i++) {
-        int x = 8 + (i % 4) * 157, y = BODY_Y + 6 + (i / 4) * 92, w = 150, h = 84;
-        int sel = song_cur == i, used = song.slot_used[i];
+        int x = 8 + (i % SG_COLS) * 125, y = BODY_Y + 6 + (i / SG_COLS) * 92, w = 120, h = 84;
+        int sel = song_cur == i, used = *song_slot_used(&song, i);
         int cur = live.cur_slot == i, queued = live.queued_slot == i;
         gfx_fill(x, y, w, h, cur ? gfx_mix(C_PANEL, C_ACCENT, 0.35f) : C_PANEL);
         gfx_rect(x, y, w, h, sel ? 3 : 1, sel ? C_TEXT : queued ? C_ACCENT : C_LINE);
         char s[4] = {(char)('A' + i), 0};
-        gfx_text(x + 10, y + 6, s, used ? C_TEXT : C_DIM, FONT_LARGE);
+        gfx_text(x + 8, y + 4, s, used ? C_TEXT : C_DIM, FONT_LARGE);
         if (used) {
-            /* a sketch of the stored hit cells */
+            /* a sketch of the stored hit cells, and a G when it keeps a groove */
             for (int v = 0; v < NV; v++) {
-                const Cell *c = &song.slot[i].cell[v][ROW_HIT];
+                const Cell *c = &song_slot(&song, i)->cell[v][ROW_HIT];
                 for (int k = 0; k < 16; k++)
                     if (c->on && euclid_hit(c, k))
-                        gfx_fill(x + 60 + k * 5, y + 14 + v * 12, 4, 9, vcol[v]);
+                        gfx_fill(x + 34 + k * 5, y + 14 + v * 12, 4, 9, vcol[v]);
             }
+            if (song.slot_groove[i][0] || song.slot_groove[i][1])
+                gfx_text(x + 10, y + h - 50, "G", 0x7ad87a, FONT_SMALL);
         }
         else
-            gfx_text(x + 44, y + 30, "EMPTY", C_DIM, FONT_SMALL);
+            text_c(x + w / 2 + 12, y + 30, "EMPTY", C_DIM, FONT_SMALL);
         if (queued)
-            gfx_text(x + 10, y + h - 26, "NEXT", C_ACCENT, FONT_SMALL);
+            gfx_text(x + 8, y + h - 26, "NEXT", C_ACCENT, FONT_SMALL);
     }
     int y = BODY_Y + 200;
     const char *labels[2] = {"TEMPO", "WIFI SYNC"};
@@ -1151,10 +1406,32 @@ static void draw_song(void)
             text_r(x + w - 10, yy + 8, val, on ? (k == 0 && clk ? C_ACCENT : C_TEXT) : C_DIM, FONT_SMALL);
         }
     }
-    char s[96];
-    snprintf(s, sizeof s, "%d BREAKS, %d BASS SAMPLES LOADED", nbanks, nbass);
-    gfx_text(12, y + 140, s, C_DIM, FONT_SMALL);
-    gfx_text(12, y + 164, "SLOTS LOAD AT THE NEXT BAR WHILE PLAYING", C_DIM, FONT_SMALL);
+    /* when a slot or song switches in, and the song files */
+    {
+        int yy = y + 132, row = song_cur == SG_PLAY;
+        for (int k = 0; k < 2; k++) {
+            int x = 8 + k * 157, w = 150, sel = row && play_f == k;
+            int next = k == 1 && live.queued_song;
+            gfx_fill(x, yy, w, 38, sel ? C_PANEL2 : C_PANEL);
+            gfx_rect(x, yy, w, 38, sel ? 2 : 1, sel ? C_ACCENT : next ? C_ACCENT : C_LINE);
+            char val[24];
+            if (k == 0) {
+                gfx_text(x + 10, yy + 8, "SWITCH", sel ? C_TEXT : C_DIM, FONT_SMALL);
+                snprintf(val, sizeof val, "%s", switch_name(song.switch_div));
+                text_r(x + w - 10, yy + 8, val, C_TEXT, FONT_SMALL);
+            }
+            else {
+                gfx_text(x + 10, yy + 8, next ? "NEXT" : "SONG", next ? C_ACCENT : sel ? C_TEXT : C_DIM, FONT_SMALL);
+                /* orange: the song last loaded or saved; dim: nothing saved there yet */
+                int there = songs_there >> song_no & 1;
+                snprintf(val, sizeof val, "%d", song_no + 1);
+                text_r(x + w - 10, yy + 8, val, song_no == song_cur_no ? C_ACCENT : there ? C_TEXT : C_DIM, FONT_SMALL);
+            }
+        }
+        char s[96];
+        snprintf(s, sizeof s, "%d BREAKS, %d BASS", nbanks, nbass);
+        text_r(620, yy + 8, s, C_DIM, FONT_SMALL);
+    }
 }
 
 static void draw_fx_overlay(void)
@@ -1333,9 +1610,9 @@ int ui_midi_cc(int ch, int cc, int v)
         break;
     case CCK_SLOT: {
         int i = v * NSLOT / 128;
-        if (song.slot_used[i] && i != live.cur_slot && i != live.queued_slot) {
+        if (*song_slot_used(&song, i) && i != live.cur_slot && i != live.queued_slot) {
             slot_load(i);
-            say(live.playing ? "%c AT THE NEXT BAR" : "LOADED %c", 'A' + i);
+            say(live.playing ? "%c AT THE NEXT %s" : "LOADED %c", 'A' + i, switch_name(song.switch_div));
         }
         break;
     }
@@ -1388,7 +1665,7 @@ void ui_midi_chart(FILE *f)
                                                                                        : "0 to its steps - 1");
             break;
         case CCK_SCENE: fprintf(f, "| %d | %s M%d | 0-63 off, 64-127 on (if saved) |\n", m->cc, names[m->kind], m->a + 1); break;
-        case CCK_SLOT: fprintf(f, "| %d | %s | 0-15 A, 16-31 B ... 112-127 H (saved slots; at the next bar while playing) |\n", m->cc, names[m->kind]); break;
+        case CCK_SLOT: fprintf(f, "| %d | %s | 0-12 A, 13-25 B ... 116-127 J (saved slots; at the next SWITCH ON while playing) |\n", m->cc, names[m->kind]); break;
         default: fprintf(f, "| %d | %s | 0 to 100 |\n", m->cc, names[m->kind]); break;
         }
     }

@@ -44,7 +44,14 @@ void ui_stick_fx(int fx);
  * stick's effects (X repeat 1/8, A repeat 1/16, Y reverse, B tape stop), and
  * R2 + the d-pad plays the groove as the left stick does with the switch up */
 void ui_l2_sticks(int on);
-void ui_tap_tempo(void);
+void ui_tap_tempo(void); /* L3; R2 + L3 lets the kept groove go */
+/* the Brick Pro's left stick (-1..1, up positive) and the side switch (groove
+ * 1: it plays the groove, 0 the filter). With R2 held it changes the groove
+ * kept with the pattern instead: up / down the lock toward the breakbeats /
+ * the clave, right / left the ghost notes after / before the hits */
+void ui_left_stick(float x, float up, int groove);
+/* where the song files are (songs/ in the app folder by default) */
+void ui_set_song_dir(const char *dir);
 /* half time: the tempo halved on one press, back to what it was on the next
  * (the HOME key on the Brick Pro under MustardOS); ui_full_bpm is the tempo
  * to save, the full one while half time is on. ui_set_half_time puts it on

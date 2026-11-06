@@ -147,6 +147,10 @@ jobs:
           grep -q "^midi clock out: START 1, .*(want 192: 1), STOP 1" $r
           # the side switch's groove: locked bars repeat, ghost notes sound
           grep -q "^groove: .*(want 1 1 1: 1)" $r
+          # the groove kept with the pattern (R2 + the left stick), ten slots and when they switch in, song files
+          grep -q "^groove kept: .*(want 1: 1)" $r
+          grep -q "^slots: 10, .*(want 1: 1)" $r
+          grep -q "^song files: .*(want 1: 1)" $r
           grep -q "^half time: .*(want 1: 1)" $r
           grep -q "^brick l2: .*(want 1: 1)" $r
           grep -q "^brick r2: .*(want 1: 1)" $r

@@ -281,13 +281,16 @@ static int groove_template(int v, int step, int clave)
     return t[best];
 }
 
+float groove_lock_now(void) { return live.groove_lock != 0.f ? live.groove_lock : song.groove_lock / 100.f; }
+float groove_ghost_now(void) { return live.groove_ghost != 0.f ? live.groove_ghost : song.groove_ghost / 100.f; }
+
 int groove_flags(int v, int step)
 {
     int flags = 0;
     for (int r = 0; r < NROW; r++)
         if (song.pat.cell[v][r].on && euclid_hit(&song.pat.cell[v][r], step))
             flags |= 1 << r;
-    float lock = live.groove_lock;
+    float lock = groove_lock_now();
     if (lock == 0.f || step < 0)
         return flags;
     int t = groove_template(v, step, lock < 0.f);
@@ -299,15 +302,44 @@ int groove_flags(int v, int step)
     return want ? flags | TRIG_HIT : 0;
 }
 
-int groove_ghost_at(int v, int step)
+/* Ghost notes, as a drummer plays them around the pattern's own hits: quiet
+ * hits on the empty 16ths just after a hit (g > 0) or just before one, as a
+ * drag into it (g < 0). They go on the e and the a of the beat (the odd 16ths);
+ * from 0.6 up they also reach two 16ths from the hit and take the 8th
+ * offbeats; never on a beat, where they would blur the kick and the backbeat.
+ * Bars 1 and 3 of each four play one set and bars 2 and 4 another, so the
+ * variation answers itself, and the second half of bar 4 is a fill: more of
+ * them, louder toward the next bar. The same every four bars, never random. */
+float groove_ghost_at(int v, int step)
 {
-    float g = live.groove_ghost;
-    if (g == 0.f || v >= NBRK || groove_flags(v, step))
-        return 0;
-    int n = g > 0.f ? step - 1 : step + 1; /* after a hit, or before one */
-    if (n < 0 || !groove_flags(v, n))
-        return 0;
-    return groove_hash(v, step & 15, g > 0.f ? 0x2c1b3c6du : 0x297a2d39u) < 0.75f * fabsf(g);
+    float g = groove_ghost_now();
+    if (g == 0.f || v >= NBRK || step < 0 || groove_flags(v, step))
+        return 0.f;
+    int i = step & 15, bar = step >> 4 & 3;
+    float a = fabsf(g);
+    if ((i & 3) == 0 || ((i & 1) == 0 && a < 0.6f))
+        return 0.f;
+    int toward = g > 0.f ? -1 : 1, reach = a >= 0.6f ? 2 : 1, dist = 0;
+    for (int d = 1; d <= reach && !dist; d++) {
+        int n = step + toward * d;
+        if (n >= 0 && groove_flags(v, n))
+            dist = d;
+    }
+    if (!dist)
+        return 0.f;
+    int fill = bar == 3 && i >= 8;
+    float p = 0.75f * a * (dist == 1 ? 1.f : 0.6f);
+    if (fill)
+        p = p * 1.6f + 0.15f;
+    unsigned salt = (g > 0.f ? 0x2c1b3c6du : 0x297a2d39u) ^ (bar & 1 ? 0x6a09e667u : 0u);
+    if (groove_hash(v, i, salt) >= p)
+        return 0.f;
+    float vel = 0.22f + 0.12f * groove_hash(v, i, salt ^ 0xbb67ae85u);
+    if (g < 0.f && dist == 1)
+        vel += 0.06f; /* a drag leans into its hit */
+    if (fill)
+        vel += 0.1f * (i - 8) / 7.f;
+    return vel;
 }
 
 /* ------------------------------------------------------------------- dsp */
@@ -553,13 +585,13 @@ static void brk_trigger(int v, int flags, int step)
 
 /* a ghost note: the slice the channel last played, quiet and at most a 16th
  * long. Not over a ratchet, nor over a GRID channel's break running on. */
-static void brk_ghost(int v)
+static void brk_ghost(int v, float vel)
 {
     BrkCh *c = &brk[v];
     const int *P = song.pat.param[v];
     if (!chan_bank(v) || c->rat_left > 0 || (P[B_MODE] == MODE_GRID && c->h[0].on && c->h[0].rel >= 1.f))
         return;
-    brk_play_ex(v, live.slice[v], 0, (float)P[B_PITCH], 0.32f, 0);
+    brk_play_ex(v, live.slice[v], 0, (float)P[B_PITCH], vel, 0);
     Head *h = &c->h[0];
     if (h->on && h->end - h->pos > sps * h->inc)
         h->end = h->pos + sps * h->inc;
@@ -907,29 +939,48 @@ static Svf sweep[2];
 static float sweep_cut = 1.f; /* 1 = open */
 static SvfK sweep_k;
 
+static const int switch_16ths[NSWITCH] = {4, 8, 16, 32, 64};
+static const char *const switch_names[NSWITCH] = {"BEAT", "1/2 BAR", "BAR", "2 BARS", "4 BARS"};
+int switch_steps(int div) { return switch_16ths[clampi(div, 0, NSWITCH - 1)]; }
+const char *switch_name(int div) { return switch_names[clampi(div, 0, NSWITCH - 1)]; }
+
+Pattern *song_slot(Song *s, int i) { return i < NSLOT_V4 ? &s->slot[i] : &s->slot_more[i - NSLOT_V4]; }
+uint8_t *song_slot_used(Song *s, int i) { return i < NSLOT_V4 ? &s->slot_used[i] : &s->slot_more_used[i - NSLOT_V4]; }
+
 static void pattern_load_now(int i)
 {
-    song.pat = song.slot[i];
+    song.pat = *song_slot(&song, i);
+    song.groove_lock = song.slot_groove[i][0];
+    song.groove_ghost = song.slot_groove[i][1];
     song_clamp();
     live.cur_slot = i;
 }
+
+static void song_switch_in(const Song *s);
 
 static void fire_step(void)
 {
     int s = next_step++;
     live.step = s;
     step_wpos = wpos;
-    if (s % 16 == 0 && live.queued_slot >= 0) {
-        pattern_load_now(live.queued_slot);
-        live.queued_slot = -1;
+    if (s % switch_steps(song.switch_div) == 0) {
+        if (live.queued_song) {
+            song_switch_in(live.queued_song);
+            live.queued_song = NULL;
+        }
+        else if (live.queued_slot >= 0) {
+            pattern_load_now(live.queued_slot);
+            live.queued_slot = -1;
+        }
     }
     if (s % 32 == 0)
         bass.riff_pos = 0;
     for (int v = 0; v < NV; v++) {
         int flags = groove_flags(v, s);
         if (!flags) {
-            if (live.groove_ghost != 0.f && groove_ghost_at(v, s))
-                brk_ghost(v);
+            float gv = groove_ghost_now() != 0.f ? groove_ghost_at(v, s) : 0.f;
+            if (gv > 0.f)
+                brk_ghost(v, gv);
             continue;
         }
         if (v == V_BASS)
@@ -1508,6 +1559,7 @@ void song_default(void)
     song.verb_tone = 40;
     song.sweep_rate = 2;
     song.sync_mode = SYNC_AUTO;
+    song.switch_div = SW_BAR;
     song.out_mode = OUT_STEREO;
     song.clk_side = 0;
     song.clk_ppqn = 1; /* 2 PPQN: Pocket Operators, Volcas */
@@ -1580,14 +1632,16 @@ void song_default(void)
 
 void slot_save(int i)
 {
-    song.slot[i] = song.pat;
-    song.slot_used[i] = 1;
+    *song_slot(&song, i) = song.pat;
+    *song_slot_used(&song, i) = 1;
+    song.slot_groove[i][0] = song.groove_lock;
+    song.slot_groove[i][1] = song.groove_ghost;
     live.cur_slot = i;
 }
 
 void slot_load(int i)
 {
-    if (!song.slot_used[i])
+    if (!*song_slot_used(&song, i))
         return;
     if (live.playing)
         live.queued_slot = i;
@@ -1597,7 +1651,8 @@ void slot_load(int i)
 
 void slot_clear(int i)
 {
-    song.slot_used[i] = 0;
+    *song_slot_used(&song, i) = 0;
+    song.slot_groove[i][0] = song.slot_groove[i][1] = 0;
     if (live.cur_slot == i)
         live.cur_slot = -1;
     if (live.queued_slot == i)
@@ -1635,79 +1690,152 @@ static void resolve(Pattern *p, const Names *nm)
     }
 }
 
-int song_save(const char *path)
+static int song_write(const char *path, const Song *src)
 {
     char tmp[512];
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
     FILE *f = fopen(tmp, "wb");
     if (!f)
         return 0;
+    static Song out;
+    out = *src;
+    /* the names of A..H straight after the song, where older versions look
+     * for them, then those of I and J */
     Names nm[1 + NSLOT];
-    names_of(&song.pat, &nm[0]);
+    names_of(&out.pat, &nm[0]);
     for (int i = 0; i < NSLOT; i++)
-        names_of(&song.slot[i], &nm[1 + i]);
-    song.magic = SONG_MAGIC;
-    song.size = sizeof song;
-    int ok = fwrite(&song, sizeof song, 1, f) == 1 && fwrite(nm, sizeof nm, 1, f) == 1;
+        names_of(song_slot(&out, i), &nm[1 + i]);
+    out.magic = SONG_MAGIC;
+    out.size = sizeof out;
+    int ok = fwrite(&out, sizeof out, 1, f) == 1 && fwrite(nm, sizeof nm, 1, f) == 1;
     ok &= fclose(f) == 0;
     if (ok)
         ok = rename(tmp, path) == 0;
     return ok;
 }
 
-int song_load(const char *path)
+int song_save(const char *path)
+{
+    song.magic = SONG_MAGIC;
+    song.size = sizeof song;
+    return song_write(path, &song);
+}
+
+/* a song file into s, checked and in range; 0 if it isn't one */
+static int song_read(const char *path, Song *s)
 {
     FILE *f = fopen(path, "rb");
     if (!f)
         return 0;
-    static Song s;
     Names nm[1 + NSLOT];
     uint32_t hdr[2] = {0, 0};
     /* this version's size, or an older one's (the fields it lacks start at
      * their defaults), or a newer one's (its extra fields are skipped) */
     int ok = fread(hdr, sizeof hdr, 1, f) == 1 && hdr[0] == SONG_MAGIC &&
-             (hdr[1] == SONG_SIZE_V1 || (hdr[1] >= SONG_SIZE_V2 && hdr[1] <= 4 * sizeof s));
-    size_t take = ok && hdr[1] < sizeof s ? hdr[1] : sizeof s;
-    memset(&s, 0, sizeof s);
-    ok = ok && fseek(f, 0, SEEK_SET) == 0 && fread(&s, take, 1, f) == 1 && fseek(f, (long)hdr[1], SEEK_SET) == 0 &&
-         fread(nm, sizeof nm, 1, f) == 1;
+             (hdr[1] == SONG_SIZE_V1 || (hdr[1] >= SONG_SIZE_V2 && hdr[1] <= 4 * sizeof *s));
+    size_t take = ok && hdr[1] < sizeof *s ? hdr[1] : sizeof *s;
+    memset(s, 0, sizeof *s);
+    memset(nm, 0, sizeof nm);
+    ok = ok && fseek(f, 0, SEEK_SET) == 0 && fread(s, take, 1, f) == 1 && fseek(f, (long)hdr[1], SEEK_SET) == 0 &&
+         fread(nm, sizeof nm[0], 1 + NSLOT_V4, f) == 1 + NSLOT_V4;
+    if (ok && fread(&nm[1 + NSLOT_V4], sizeof nm[0], NSLOT - NSLOT_V4, f) != NSLOT - NSLOT_V4) /* before v0.5: no I, J */
+        memset(&nm[1 + NSLOT_V4], 0, sizeof nm[0] * (NSLOT - NSLOT_V4));
     fclose(f);
     if (!ok)
         return 0;
     if (hdr[1] == SONG_SIZE_V1) { /* from v0.1: stereo out, the clock as its defaults */
-        s.size = sizeof s;
-        s.out_mode = OUT_STEREO, s.clk_side = 0, s.clk_ppqn = 1, s.clk_width = 5;
+        s->out_mode = OUT_STEREO, s->clk_side = 0, s->clk_ppqn = 1, s->clk_width = 5;
     }
-    if (!(s.bpm >= 40.f && s.bpm <= 250.f))
-        s.bpm = 170.f;
-    resolve(&s.pat, &nm[0]);
+    if (hdr[1] <= offsetof(Song, switch_div)) /* before v0.5: slots switched at the bar */
+        s->switch_div = SW_BAR;
+    s->size = sizeof *s;
+    if (!(s->bpm >= 40.f && s->bpm <= 250.f))
+        s->bpm = 170.f;
+    resolve(&s->pat, &nm[0]);
     for (int i = 0; i < NSLOT; i++)
-        resolve(&s.slot[i], &nm[1 + i]);
+        resolve(song_slot(s, i), &nm[1 + i]);
+    for (int v = 0; v < NV; v++) {
+        s->vol[v] = clampi(s->vol[v], 0, 100);
+        s->pan[v] = clampi(s->pan[v], -100, 100);
+        s->send[v] = clampi(s->send[v], 0, 100);
+    }
+    s->master = clampi(s->master, 0, 100);
+    s->glue = clampi(s->glue, 0, 100);
+    s->master_drive = clampi(s->master_drive, 0, 100);
+    s->verb_time = clampi(s->verb_time, 0, 100);
+    s->verb_tone = clampi(s->verb_tone, 0, 100);
+    s->sweep_rate = clampi(s->sweep_rate, 0, 3);
+    s->sync_mode = clampi(s->sync_mode, 0, NSYNCMODE - 1);
+    s->out_mode = clampi(s->out_mode, 0, 1);
+    s->clk_side = clampi(s->clk_side, 0, 1);
+    s->clk_ppqn = clampi(s->clk_ppqn, 0, NPPQN - 1);
+    s->clk_width = clampi(s->clk_width, 1, 20);
+    for (int i = 0; i < NSLOT; i++) {
+        *song_slot_used(s, i) = *song_slot_used(s, i) != 0;
+        for (int k = 0; k < 2; k++)
+            s->slot_groove[i][k] = (int8_t)clampi(s->slot_groove[i][k], -100, 100);
+    }
+    s->groove_lock = (int8_t)clampi(s->groove_lock, -100, 100);
+    s->groove_ghost = (int8_t)clampi(s->groove_ghost, -100, 100);
+    s->switch_div = (uint8_t)clampi(s->switch_div, 0, NSWITCH - 1);
+    for (int k = 0; k < NSCENE; k++) {
+        s->scene_used[k] = s->scene_used[k] != 0;
+        for (int v = 0; v < NV; v++)
+            s->scene_mute[k][v] = s->scene_mute[k][v] != 0, s->scene_solo[k][v] = s->scene_solo[k][v] != 0;
+    }
+    return 1;
+}
+
+int song_load(const char *path)
+{
+    static Song s;
+    if (!song_read(path, &s))
+        return 0;
     song = s;
     song_clamp();
-    for (int v = 0; v < NV; v++) {
-        song.vol[v] = clampi(song.vol[v], 0, 100);
-        song.pan[v] = clampi(song.pan[v], -100, 100);
-        song.send[v] = clampi(song.send[v], 0, 100);
-    }
-    song.master = clampi(song.master, 0, 100);
-    song.glue = clampi(song.glue, 0, 100);
-    song.master_drive = clampi(song.master_drive, 0, 100);
-    song.verb_time = clampi(song.verb_time, 0, 100);
-    song.verb_tone = clampi(song.verb_tone, 0, 100);
-    song.sweep_rate = clampi(song.sweep_rate, 0, 3);
-    song.sync_mode = clampi(song.sync_mode, 0, NSYNCMODE - 1);
-    song.out_mode = clampi(song.out_mode, 0, 1);
-    song.clk_side = clampi(song.clk_side, 0, 1);
-    song.clk_ppqn = clampi(song.clk_ppqn, 0, NPPQN - 1);
-    song.clk_width = clampi(song.clk_width, 1, 20);
-    for (int k = 0; k < NSCENE; k++) {
-        song.scene_used[k] = song.scene_used[k] != 0;
-        for (int v = 0; v < NV; v++)
-            song.scene_mute[k][v] = song.scene_mute[k][v] != 0, song.scene_solo[k][v] = song.scene_solo[k][v] != 0;
+    for (int k = 0; k < NSCENE; k++)
         if (!song.scene_used[k]) /* never saved (or a save from before the scenes): the default */
             scene_default(k);
-    }
+    return 1;
+}
+
+/* a song file switching in: everything but the device's own settings (the
+ * output, the clock out and the Wi-Fi sync mode), which stay as they are */
+static void song_switch_in(const Song *in)
+{
+    int sync_mode = song.sync_mode, out_mode = song.out_mode, clk_side = song.clk_side;
+    int clk_ppqn = song.clk_ppqn, clk_width = song.clk_width;
+    song = *in;
+    song.sync_mode = sync_mode, song.out_mode = out_mode, song.clk_side = clk_side;
+    song.clk_ppqn = clk_ppqn, song.clk_width = clk_width;
+    song_clamp();
+    for (int k = 0; k < NSCENE; k++)
+        if (!song.scene_used[k])
+            scene_default(k);
+    live.cur_slot = live.queued_slot = -1;
+    live.songs_loaded++;
+}
+
+int song_file_save(const char *path, float bpm)
+{
+    static Song s;
+    s = song;
+    s.bpm = bpm;
+    return song_write(path, &s);
+}
+
+int song_file_load(const char *path)
+{
+    static Song incoming[2]; /* the one queued stays put while the next is read */
+    static int k;
+    Song *s = &incoming[k];
+    if (!song_read(path, s))
+        return 0;
+    k ^= 1;
+    if (live.playing)
+        live.queued_song = s;
+    else
+        song_switch_in(s);
     return 1;
 }
 
@@ -1729,5 +1857,6 @@ void engine_init(int sample_rate)
         live.play_pos[v] = -1.f;
     live.fx = -1;
     live.queued_slot = -1;
+    live.queued_song = NULL;
     live.cur_slot = -1;
 }

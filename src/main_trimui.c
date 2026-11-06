@@ -375,17 +375,19 @@ static void on_trigger(int which, int value)
 static int groove_mode;
 
 /* The Brick Pro's sticks: live performance, springing back when let go;
- * nothing they do is saved.
+ * only the groove R2 + the left stick sets is saved (with the pattern).
  *   left stick   with the side switch down (FILTER), pushed any way: the L2
  *                low-pass, closed by hand, darker the further it goes; let
  *                go, it opens again. With the switch up (GROOVE): up locks
  *                the Euclidean cells toward breakbeat patterns, down toward
  *                the clave family, right adds ghost notes after the hits,
- *                left before them; the further, the more
+ *                left before them; the further, the more. With R2 held, in
+ *                either position, it sets the groove kept with the pattern
+ *                the same ways, which stays when let go (ui_left_stick)
  *   right stick  the punch-in effects, as R2 + the d-pad: up repeats the
  *                last 1/8, right the last 1/16, left reverses, down stops
  *                the tape
- *   L3           tap tempo;  R3  a new beat (as SELECT)
+ *   L3           tap tempo (R2 + L3: no kept groove);  R3  a new beat (as SELECT)
  * Axes: pad_axes above. */
 static float stick[AX_RY + 1]; /* by AX_LX .. AX_RY: -1 .. 1, centre dead zone removed */
 static int stick_fx_now = -1;
@@ -402,19 +404,8 @@ static float deadzone(int v)
 static void sticks_apply(void)
 {
     float lx = stick[AX_LX], ly = stick[AX_LY];
-    float amount = sqrtf(lx * lx + ly * ly);
-    ui_lock();
-    if (groove_mode) {
-        /* squared, so the first part of the travel is the slight variations */
-        live.sweep_hand = 0.f;
-        live.groove_lock = -ly * fabsf(ly); /* up is negative from SDL */
-        live.groove_ghost = lx * fabsf(lx);
-    }
-    else {
-        live.sweep_hand = amount > 1.f ? 1.f : amount;
-        live.groove_lock = live.groove_ghost = 0.f;
-    }
-    ui_unlock();
+    /* the filter or the groove, or with R2 held the groove kept with the pattern */
+    ui_left_stick(lx, -ly, groove_mode); /* up is negative from SDL */
     /* the right stick: the way it is pushed furthest, engaged past 60%,
      * let go below 40% */
     float rx = stick[AX_RX], ry = stick[AX_RY];
