@@ -1503,6 +1503,114 @@ int main(int argc, char **argv)
                saved, loaded, device, asks, over, switched, in_at, half,
                saved && loaded && device && asks && over && switched && half);
     }
+    /* ---- the one-touch fill: armed in the first half of the bar it plays the
+     * second half, ghost notes on beat 3 and the snare channel rolling every
+     * 16th of beat 4, then ends at the bar line by itself; later in the bar
+     * it starts on the next 16th, on the last 16th it waits for the next bar;
+     * again calls it off; stopped, nothing; the Brick's L2 tapped alone plays
+     * it, L2 + the d-pad doesn't. fill.wav: two bars, the fill in the first */
+    {
+        static float b2[64];
+        uint32_t hits[2] = {0, 0}, roll = 0;
+        int armed = 0, over = 0;
+        for (int k = 0; k < 2; k++) {
+            song_default();
+            engine_init(RATE);
+            engine_set_playing(0);
+            engine_set_playing(1);
+            live.step = 0;
+            while (live.step < 2)
+                render_mono(b2, 64);
+            if (k) {
+                ui_fill();
+                armed = live.fill_from == 8 && live.fill_to == 16 && live.fill_v == 1;
+            }
+            while (live.step < 8)
+                render_mono(b2, 64);
+            uint32_t t0 = 0;
+            for (int v = 0; v < NBRK; v++)
+                t0 += live.trig_count[v];
+            uint32_t r0 = 0;
+            while (live.step < 16) {
+                render_mono(b2, 64);
+                if (k && live.step == 10 && !over) {
+                    ui_draw(fb);
+                    char fp[600];
+                    snprintf(fp, sizeof fp, "%s/fill.ppm", out);
+                    write_ppm(fp, fb);
+                    over = 1;
+                }
+                if (live.step == 12 && !r0)
+                    r0 = live.trig_count[1] + 1; /* +1: never 0 */
+            }
+            for (int v = 0; v < NBRK; v++)
+                hits[k] += live.trig_count[v];
+            hits[k] -= t0;
+            if (k)
+                roll = live.trig_count[1] - (r0 - 1) + 1; /* steps 12..15, 12 counted before r0 was taken */
+        }
+        over = live.fill_to == 0;
+        engine_set_playing(0);
+        /* later in the bar, the last 16th, again, stopped */
+        engine_init(RATE);
+        engine_set_playing(0);
+        engine_set_playing(1);
+        live.step = 0;
+        while (live.step < 10)
+            render_mono(b2, 64);
+        ui_fill();
+        int late = live.fill_from == 11 && live.fill_to == 16;
+        ui_fill();
+        int off = live.fill_to == 0;
+        while (live.step < 14)
+            render_mono(b2, 64);
+        ui_fill();
+        int next_bar = live.fill_from == 24 && live.fill_to == 32;
+        engine_set_playing(0);
+        int stop_clears = live.fill_to == 0;
+        ui_fill();
+        int stopped = live.fill_to == 0;
+        /* the Brick: L2 alone tapped plays it, L2 + the d-pad not */
+        ui_l2_sticks(1);
+        engine_set_playing(1);
+        ui_button(BTN_L2, 1);
+        ui_button(BTN_L2, 0);
+        int tap = live.fill_to > 0;
+        ui_button(BTN_L2, 1);
+        ui_button(BTN_L2, 0); /* again: off */
+        ui_button(BTN_L2, 1);
+        ui_button(BTN_DOWN, 1);
+        ui_button(BTN_DOWN, 0);
+        ui_button(BTN_L2, 0);
+        int combo = live.fill_to == 0;
+        engine_set_playing(0);
+        ui_l2_sticks(0);
+        /* to listen to */
+        {
+            song_default();
+            engine_init(RATE);
+            engine_set_playing(0);
+            engine_set_playing(1);
+            live.step = 0;
+            int frames = (int)(2 * 16 * RATE * 15.f / song.bpm) / 512 * 512 + 512;
+            int16_t *pcm = malloc(sizeof(int16_t) * 2 * frames);
+            engine_render(pcm, 512);
+            ui_fill();
+            for (int done = 512; done < frames; done += 512)
+                engine_render(pcm + 2 * done, 512);
+            engine_set_playing(0);
+            char wp[600];
+            snprintf(wp, sizeof wp, "%s/fill.wav", out);
+            write_wav(wp, pcm, frames);
+            free(pcm);
+        }
+        printf("fill: armed for the 2nd half %d, hits in it %u -> %u, the snare rolls every 16th of beat 4 %d, "
+               "over at the bar line %d; later from the next 16th %d, again off %d, last 16th the next bar %d, "
+               "stop clears %d, stopped nothing %d; Brick L2 tap %d, L2 + d-pad not %d (want 1: %d)\n",
+               armed, hits[0], hits[1], roll == 4, over, late, off, next_bar, stop_clears, stopped, tap, combo,
+               armed && hits[1] > hits[0] && roll == 4 && over && late && off && next_bar && stop_clears && stopped &&
+                   tap && combo);
+    }
     breaks_free();
     return 0;
 }

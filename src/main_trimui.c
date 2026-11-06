@@ -387,7 +387,7 @@ static int groove_mode;
  *   right stick  the punch-in effects, as R2 + the d-pad: up repeats the
  *                last 1/8, right the last 1/16, left reverses, down stops
  *                the tape
- *   L3           tap tempo (R2 + L3: no kept groove);  R3  a new beat (as SELECT)
+ *   L3           tap tempo (R2 + L3: no kept groove);  R3  the fill (ui_fill)
  * Axes: pad_axes above. */
 static float stick[AX_RY + 1]; /* by AX_LX .. AX_RY: -1 .. 1, centre dead zone removed */
 static int stick_fx_now = -1;
@@ -579,7 +579,7 @@ static void on_event(const SDL_Event *e)
         }
         else if (m == JB_R3) {
             if (down)
-                ui_button(BTN_SELECT, 1), ui_button(BTN_SELECT, 0);
+                ui_fill();
         }
 #endif
         else if (down) /* worth knowing on a new firmware */

@@ -130,6 +130,7 @@ These work on every page:
 | START | Play / stop |
 | SELECT | A new jungle beat on all five channels, keeping the mutes and the mixer; R2+SELECT undoes it |
 | L2 (hold) | Brick Pro: low-pass sweep, closing over the time set on MIX > MASTER > L2. Brick: see below |
+| R3 (Brick Pro) / L2 tapped alone (Brick) | **Fill**: a one-touch fill to the end of the bar; press again to call it off (see [the fill](#the-fill)) |
 | L2 + d-pad (Brick) | Low-pass sweep, as the Brick Pro's left stick: any direction closes it over the MIX > MASTER > L2 time, let go and it opens |
 | L2 + X / A (Brick) | Repeat the last 1/8 / 1/16, as the Brick Pro's right stick up / right |
 | L2 + Y / B (Brick) | Reverse / tape stop, as the Brick Pro's right stick left / down |
@@ -146,6 +147,22 @@ These work on every page:
 | Side switch (Brick) | Half time: up halves the tempo, down brings back the tempo it was |
 | HOME (Brick Pro, MustardOS) | Half time: the tempo halved; press again for the tempo it was |
 | MENU | Quit |
+
+### The fill
+
+One press for a fill into the next bar: R3 (the right stick's click) on the Brick Pro, L2 tapped on
+its own on the Brick. It plays the second half of the bar and ends at the bar line by itself:
+
+- **Beat 3:** ghost notes all over the break channels, on top of what they play.
+- **Beat 4:** the snare channel (the break channel playing a snare slice, BRK2 by default) rolls
+  on every 16th, a semitone higher and louder each time, ratcheted 1, 2, 2 then 4 times into
+  the downbeat.
+
+Pressed in the first half of the bar it waits for the half bar; later it starts on the next 16th;
+on the bar's last 16th it plays at the end of the next bar. The steps under the header light
+yellow where the fill will play. Press again to call it off. It changes nothing in the pattern,
+and it plays only while the sequencer runs. With SWITCH at the bar, a slot queued while the fill
+plays comes in right after it.
 
 ### Mute scenes
 
@@ -249,7 +266,7 @@ you flip it.
 | right, left / down | Reverse / tape stop, as R2 + left / down |
 | R2 + left, any way (either switch position) | Sets the groove kept with the pattern: up / down moves the lock toward the breakbeats / the clave, right / left the ghost notes after / before the hits, faster the further over (all the way, about 1¼ s from nothing to full). It stays when you let go |
 | L3 (click) | Tap tempo; R2 + L3 lets the kept groove go |
-| R3 (click) | A new jungle beat, as SELECT |
+| R3 (click) | The fill (see [the fill](#the-fill)); SELECT is the new beat |
 
 R2 + the d-pad wins over the right stick while both are held.
 
@@ -283,7 +300,7 @@ footer shows the kept one: B80 is the lock 80% toward the breakbeats (C the clav
 39% after the hits (< before). The stick, pushed without R2, plays over the kept groove on the way
 it is pushed and goes back to it when let go.
 
-On the **Brick**, which has no sticks, **L2 stands in for them**. L2 alone does nothing; L2 + the
+On the **Brick**, which has no sticks, **L2 stands in for them**. L2 tapped alone plays the fill; L2 + the
 d-pad is the left stick (any direction closes the low-pass, over the MIX > MASTER > L2 time, and
 let go it opens), and L2 + A / B / X / Y is the right stick, each button where the stick would
 point: X (top) repeats the last 1/8, A (right) the last 1/16, Y (left) reverses, B (bottom) stops

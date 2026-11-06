@@ -49,6 +49,7 @@ static int l2_sticks; /* the Brick: L2 + the d-pad / A B X Y, and R2 + the d-pad
 #define BRICK_GROOVE_LOCK 0.5f
 #define BRICK_GROOVE_GHOST 0.35f
 static int face_order[4], face_norder; /* A B X Y held under L2, the latest last */
+static int l2_tap; /* the Brick: L2 down with nothing else yet, so letting go plays the fill */
 static int stick_fx = -1; /* the Brick Pro's right stick, or -1 */
 static int half_on;            /* half time: song.bpm is half of half_from */
 static float half_from, half_to; /* the tempo before, and the one it became */
@@ -232,6 +233,22 @@ static void groove_edit(int ms)
         groove_say("GROOVE  ");
         changed = 1;
     }
+}
+
+/* the one-touch fill (R3 on the Brick Pro, a tap of L2 on the Brick) */
+static void fill_toggle(void)
+{
+    int r = engine_fill();
+    say(r > 0 ? "FILL" : r < 0 ? "NO FILL" : "THE FILL PLAYS WHILE PLAYING");
+}
+
+void ui_fill(void)
+{
+    if (upd_open)
+        return;
+    ui_lock();
+    fill_toggle();
+    ui_unlock();
 }
 
 void ui_init(void)
@@ -847,6 +864,15 @@ void ui_button(int b, int down)
     hold_ms[b] = rep_ms[b] = rep_n[b] = 0;
     ui_lock();
     if (l2_sticks) {
+        /* L2 tapped alone plays the fill */
+        if (b == BTN_L2) {
+            if (down)
+                l2_tap = 1;
+            else if (l2_tap && !upd_open)
+                fill_toggle();
+        }
+        if (b != BTN_L2 && down)
+            l2_tap = 0;
         /* the left stick: L2 + any way on the d-pad closes the filter; R2 + the
          * d-pad plays the groove, as the stick does with the switch up: up locks
          * toward the breakbeats, down the clave family, right / left ghost notes
@@ -1033,9 +1059,11 @@ static void draw_header(void)
         gfx_fill(ix + 9, 12, 5, 20, C_DIM);
     }
 
-    int cur = live.step % 16;
+    int cur = live.step % 16, bar = live.step - cur;
     for (int i = 0; i < 16; i++) {
         uint32_t c = i % 4 == 0 ? C_LINE + 0x141414 : C_LINE;
+        if (live.fill_to > 0 && bar + i >= live.fill_from && bar + i < live.fill_to)
+            c = C_SOLO; /* where the fill plays */
         if (i == cur && live.playing)
             c = C_ACCENT;
         gfx_fill(i * 40 + 1, HEADER_H + 3, 38, 5, c);

@@ -127,6 +127,9 @@ typedef struct {
     int fx;                /* punch-in effect held, or -1 */
     int queued_slot;       /* pattern slot switching in at the next song.switch_div, or -1 */
     const Song *queued_song; /* a song switching in the same way, or NULL */
+    /* the one-touch fill: steps fill_from .. fill_to - 1 (counted as
+     * live.step), fill_to 0 when there's none; fill_v the channel that rolls */
+    int fill_from, fill_to, fill_v;
     volatile uint32_t songs_loaded; /* counts the songs switched in */
     int cur_slot;          /* slot last loaded or saved, or -1 */
     volatile int step;
@@ -163,6 +166,11 @@ void engine_audition(int v);
  * a note off; any thread. Played at the start of the next block. */
 void engine_note(int ch, int note, int vel);
 void engine_set_playing(int on);
+/* the one-touch fill, to the end of the bar: the second half of it, from the
+ * next 16th once that has begun, or of the next bar on its last 16th. Ghost
+ * notes all over beat 3, then the snare channel rolls up into the bar line.
+ * 1 armed, -1 a fill already armed or playing called off, 0 stopped. Under the lock. */
+int engine_fill(void);
 /* transport position in 16th steps with fraction, a hard jump, and a
  * playback speed trim for the Wi-Fi sync (1.0 = none); all under the lock */
 double engine_position(void);

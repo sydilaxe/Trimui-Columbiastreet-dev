@@ -310,9 +310,8 @@ int groove_flags(int v, int step)
  * Bars 1 and 3 of each four play one set and bars 2 and 4 another, so the
  * variation answers itself, and the second half of bar 4 is a fill: more of
  * them, louder toward the next bar. The same every four bars, never random. */
-float groove_ghost_at(int v, int step)
+static float ghost_at(int v, int step, float g, int fill)
 {
-    float g = groove_ghost_now();
     if (g == 0.f || v >= NBRK || step < 0 || groove_flags(v, step))
         return 0.f;
     int i = step & 15, bar = step >> 4 & 3;
@@ -327,7 +326,6 @@ float groove_ghost_at(int v, int step)
     }
     if (!dist)
         return 0.f;
-    int fill = bar == 3 && i >= 8;
     float p = 0.75f * a * (dist == 1 ? 1.f : 0.6f);
     if (fill)
         p = p * 1.6f + 0.15f;
@@ -340,6 +338,11 @@ float groove_ghost_at(int v, int step)
     if (fill)
         vel += 0.1f * (i - 8) / 7.f;
     return vel;
+}
+
+float groove_ghost_at(int v, int step)
+{
+    return ghost_at(v, step, groove_ghost_now(), (step >> 4 & 3) == 3 && (step & 15) >= 8);
 }
 
 /* ------------------------------------------------------------------- dsp */
@@ -958,6 +961,54 @@ static void pattern_load_now(int i)
 
 static void song_switch_in(const Song *s);
 
+/* the fill's roll: the channel playing a snare (or BRK2, or the first that
+ * plays at all), on a snare slice of its break */
+static int fill_channel(void)
+{
+    int best = -1;
+    for (int k = 0; k < NBRK; k++) {
+        int v = (k + 1) % NBRK; /* BRK2 first */
+        const Bank *b = chan_bank(v);
+        const int *P = song.pat.param[v];
+        if (!b || b->nslices < 1 || song.pat.mute[v] || !song.pat.cell[v][ROW_HIT].on || P[B_MODE] == MODE_GRID)
+            continue;
+        if (b->tag[clampi(P[B_SLICE], 0, b->nslices - 1)] & TAG_SNARE)
+            return v;
+        if (best < 0)
+            best = v;
+    }
+    return best >= 0 ? best : 1;
+}
+
+/* beat 4 of the fill, 16th k (0..3): the snare, a semitone higher and louder
+ * each 16th, ratcheted 1, 2, 2 then 4 times into the bar line */
+static void brk_fill_roll(int v, int k)
+{
+    static const int rat[4] = {1, 2, 2, 4};
+    BrkCh *c = &brk[v];
+    const int *P = song.pat.param[v];
+    const Bank *b = chan_bank(v);
+    if (!b || b->nslices < 1)
+        return;
+    int slice = clampi(P[B_SLICE], 0, b->nslices - 1);
+    if (!(b->tag[slice] & TAG_SNARE) && bank_find_tag(b, TAG_SNARE, 0) >= 0)
+        slice = bank_find_tag(b, TAG_SNARE, 0);
+    float semis = (float)(P[B_PITCH] + k), vel = 0.6f + 0.13f * k;
+    brk_play_ex(v, slice, 0, semis, vel, 0);
+    c->rat_left = rat[k] - 1;
+    if (c->rat_left > 0) {
+        c->rat_int = (int)(sps / rat[k]);
+        if (c->rat_int < 32)
+            c->rat_int = 32;
+        c->rat_cd = c->rat_int;
+        c->rat_slice = slice;
+        c->rat_rev = 0;
+        c->rat_semis = semis;
+        c->rat_vel = vel;
+    }
+    live.trig_count[v]++;
+}
+
 static void fire_step(void)
 {
     int s = next_step++;
@@ -975,10 +1026,19 @@ static void fire_step(void)
     }
     if (s % 32 == 0)
         bass.riff_pos = 0;
+    int filling = live.fill_to > 0 && s >= live.fill_from && s < live.fill_to;
+    if (live.fill_to > 0 && s >= live.fill_to)
+        live.fill_to = 0; /* over at the bar line */
     for (int v = 0; v < NV; v++) {
+        if (filling && v == live.fill_v && (s & 15) >= 12) {
+            brk_fill_roll(v, (s & 15) - 12);
+            continue;
+        }
         int flags = groove_flags(v, s);
         if (!flags) {
-            float gv = groove_ghost_now() != 0.f ? groove_ghost_at(v, s) : 0.f;
+            /* in the fill, ghost notes all the way, the way the groove has them (after the hits unless before) */
+            float g = groove_ghost_now();
+            float gv = filling ? ghost_at(v, s, g < 0.f ? -1.f : 1.f, 1) : g != 0.f ? groove_ghost_at(v, s) : 0.f;
             if (gv > 0.f)
                 brk_ghost(v, gv);
             continue;
@@ -1000,6 +1060,7 @@ void engine_set_playing(int on)
             brk[v].walk = 0;
     }
     if (!on) {
+        live.fill_to = 0;
         bass.gate = 0;
         for (int v = 0; v < NBRK; v++) {
             brk[v].rat_left = 0;
@@ -1007,6 +1068,25 @@ void engine_set_playing(int on)
         }
     }
     live.playing = on;
+}
+
+int engine_fill(void)
+{
+    if (!live.playing)
+        return 0;
+    if (live.fill_to > 0) {
+        live.fill_to = 0;
+        return -1;
+    }
+    int n = next_step, bar = n & ~15, i = n & 15;
+    if (i <= 8)
+        live.fill_from = bar + 8, live.fill_to = bar + 16;
+    else if (i <= 14)
+        live.fill_from = n, live.fill_to = bar + 16;
+    else
+        live.fill_from = bar + 24, live.fill_to = bar + 32;
+    live.fill_v = fill_channel();
+    return 1;
 }
 
 void engine_audition(int v)
