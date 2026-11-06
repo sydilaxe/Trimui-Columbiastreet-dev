@@ -1119,8 +1119,10 @@ int main(int argc, char **argv)
     }
     /* ---- the groove (the side switch up): the lock pulls each channel's HIT
      * cell to a traditional rhythm, so at full every bar is the same; part
-     * way it changes some steps; ghost notes land on empty 16ths next to a
-     * hit; and at rest nothing changes (session.wav is the same sound) */
+     * way it changes some steps; ghost notes land on empty 16ths off the beat
+     * near a hit (only the e and a of the beat, next to it, at 0.4), quiet, and
+     * more of them in the fill at the end of each fourth bar; and at rest
+     * nothing changes (session.wav is the same sound) */
     {
         song_default();
         engine_init(RATE);
@@ -1147,16 +1149,30 @@ int main(int argc, char **argv)
             }
         }
         live.groove_lock = 0.f;
-        int ghosts = 0, ghost_bad = 0;
-        for (int dir = -1; dir <= 1; dir += 2) {
-            live.groove_ghost = (float)dir;
-            for (int v = 0; v < NBRK; v++)
-                for (int s = 1; s < 64; s++)
-                    if (groove_ghost_at(v, s)) {
+        int ghosts = 0, ghost_bad = 0, low_bad = 0, vel_bad = 0, fill1 = 0, fill4 = 0;
+        for (int dir = -1; dir <= 1; dir += 2)
+            for (int lvl = 0; lvl < 2; lvl++) {
+                live.groove_ghost = dir * (lvl ? 1.f : 0.4f);
+                for (int v = 0; v < NBRK; v++)
+                    for (int s = 0; s < 256; s++) {
+                        float gv = groove_ghost_at(v, s);
+                        if (gv <= 0.f)
+                            continue;
+                        int i = s & 15, by = 0;
+                        for (int d = 1; d <= 1 + lvl; d++) {
+                            int n = s + (dir > 0 ? -d : d);
+                            by |= n >= 0 && groove_flags(v, n) != 0;
+                        }
                         ghosts++;
-                        ghost_bad += groove_flags(v, s) != 0 || !groove_flags(v, dir > 0 ? s - 1 : s + 1);
+                        ghost_bad += groove_flags(v, s) != 0 || (i & 3) == 0 || !by;
+                        low_bad += !lvl && (i & 1) == 0;
+                        vel_bad += gv < 0.2f || gv > 0.5f;
+                        if (i >= 8 && (s >> 4 & 3) == 0)
+                            fill1++;
+                        if (i >= 8 && (s >> 4 & 3) == 3)
+                            fill4++;
                     }
-        }
+            }
         /* and they sound: more hits in 4 s with the ghosts than without */
         uint32_t hits[2];
         for (int k = 0; k < 2; k++) {
@@ -1183,10 +1199,12 @@ int main(int argc, char **argv)
         write_ppm(path, fb);
         ui_left_mode(0, NULL);
         printf("groove: %d channels, %d steps; lock 0.3 changes %d, full %d, bars repeat at full %d, clave differs %d; "
-               "ghosts %d, on an empty 16th by a hit %d, heard %u -> %u (want 1 1 1: %d)\n",
-               active, steps, changed_part, changed_full, same_full, clave_differs, ghosts, !ghost_bad, hits[0],
-               hits[1], same_full && changed_part > 0 && changed_part < changed_full && clave_differs > 0 && ghosts > 0 &&
-                   !ghost_bad && hits[1] > hits[0]);
+               "ghosts %d, on an empty 16th off the beat by a hit %d, odd 16ths only at 0.4 %d, quiet %d, "
+               "bar 4 fills %d -> %d, heard %u -> %u (want 1 1 1: %d)\n",
+               active, steps, changed_part, changed_full, same_full, clave_differs, ghosts, !ghost_bad, !low_bad,
+               !vel_bad, fill1, fill4, hits[0], hits[1],
+               same_full && changed_part > 0 && changed_part < changed_full && clave_differs > 0 && ghosts > 0 &&
+                   !ghost_bad && !low_bad && !vel_bad && fill4 > fill1 && hits[1] > hits[0]);
     }
     /* ---- half time (HOME on the Brick Pro, the side switch on the Brick): halves the tempo, the next press
      * puts back the tempo it was; saves keep the full tempo */
@@ -1279,6 +1297,319 @@ int main(int argc, char **argv)
                "pattern untouched %d; Brick Pro L2 alone %d (want 1: %d)\n",
                alone, sweep, open, fx_x, fx_a, fx_back, fx_y, fx_b, let_go, untouched, pro,
                alone && sweep && open && fx_x && fx_a && fx_back && fx_y && fx_b && let_go && untouched && pro);
+    }
+    /* ---- the groove kept with the pattern: R2 + the Brick Pro's left stick
+     * changes it (and plays nothing live), it stays when let go, the stick
+     * alone plays over it, a slot keeps it, R2 + B lets it go, and on the
+     * Brick R2 + A keeps what R2 + the d-pad plays */
+    {
+        song_default();
+        engine_init(RATE);
+        ui_l2_sticks(0);
+        ui_set_page(PAGE_PATTERN);
+        ui_button(BTN_R2, 1);
+        ui_left_stick(0.7f, 1.f, 1);
+        int edits = live.groove_lock == 0.f && live.groove_ghost == 0.f;
+        for (int t = 0; t < 50; t++)
+            ui_tick(20);
+        int lock1 = song.groove_lock, ghost1 = song.groove_ghost;
+        ui_left_stick(0.f, 0.f, 1);
+        ui_button(BTN_R2, 0);
+        int stays = song.groove_lock == lock1 && song.groove_ghost == ghost1;
+        ui_left_stick(0.f, -1.f, 1);
+        int over = groove_lock_now() == -1.f && groove_ghost_now() == ghost1 / 100.f;
+        ui_left_stick(0.f, 0.f, 1);
+        int back = groove_lock_now() == lock1 / 100.f;
+        /* kept at 100 the ghosts are those the stick plays all the way over */
+        int8_t kl = song.groove_lock, kg = song.groove_ghost;
+        song.groove_lock = 0, song.groove_ghost = 100;
+        int same = 1;
+        for (int v = 0; v < NBRK; v++)
+            for (int st = 0; st < 64; st++) {
+                float k = groove_ghost_at(v, st);
+                live.groove_ghost = 1.f;
+                same &= k == groove_ghost_at(v, st);
+                live.groove_ghost = 0.f;
+            }
+        song.groove_lock = kl, song.groove_ghost = kg;
+        slot_save(9);
+        song.groove_lock = song.groove_ghost = 0;
+        slot_load(9);
+        int slot_ok = song.groove_lock == lock1 && song.groove_ghost == ghost1 && live.cur_slot == 9;
+        ui_draw(fb);
+        char gp[600];
+        snprintf(gp, sizeof gp, "%s/groove_kept.ppm", out);
+        write_ppm(gp, fb);
+        ui_button(BTN_R2, 1);
+        ui_button(BTN_B, 1);
+        ui_button(BTN_B, 0);
+        ui_button(BTN_R2, 0);
+        int cleared = !song.groove_lock && !song.groove_ghost;
+        ui_l2_sticks(1);
+        ui_button(BTN_R2, 1);
+        ui_button(BTN_UP, 1);
+        ui_button(BTN_RIGHT, 1);
+        ui_button(BTN_A, 1);
+        ui_button(BTN_A, 0);
+        ui_button(BTN_UP, 0);
+        ui_button(BTN_RIGHT, 0);
+        ui_button(BTN_R2, 0);
+        int brick = song.groove_lock == 50 && song.groove_ghost == 35 && groove_lock_now() == 0.5f;
+        ui_l2_sticks(0);
+        song.groove_lock = song.groove_ghost = 0;
+        printf("groove kept: R2 + stick edits %d, 1 s up-right -> lock %d ghosts %d, stays %d, the stick plays over %d, "
+               "back %d, kept 100 = stick all the way %d, slot J keeps it %d, R2+B lets go %d, Brick R2+A keeps %d "
+               "(want 1: %d)\n",
+               edits, lock1, ghost1, stays, over, back, same, slot_ok, cleared, brick,
+               edits && lock1 >= 70 && lock1 <= 90 && ghost1 >= 30 && ghost1 <= 48 && stays && over && back && same &&
+                   slot_ok && cleared && brick);
+    }
+    /* ---- ten slots: I and J saved and loaded; a v0.4 save (eight slots)
+     * loads with I and J empty, switching at the bar; a queued slot switches
+     * in on the next beat, half bar, bar, 2 bars or 4 bars */
+    {
+        song_default();
+        engine_init(RATE);
+        slot_save(2);
+        slot_save(8);
+        song.pat.param[0][B_PITCH] = 5;
+        song.groove_ghost = -40;
+        slot_save(9);
+        song.switch_div = SW_2BARS;
+        char sp[600];
+        snprintf(sp, sizeof sp, "%s/slots.sav", out);
+        song_save(sp);
+        song_default();
+        int ij = song_load(sp) && *song_slot_used(&song, 8) && *song_slot_used(&song, 9) &&
+                 song_slot(&song, 9)->param[0][B_PITCH] == 5 && song.slot_groove[9][1] == -40 &&
+                 song.switch_div == SW_2BARS;
+        FILE *f = fopen(sp, "rb");
+        static unsigned char buf[sizeof(Song) + 4096];
+        size_t got = fread(buf, 1, sizeof buf, f);
+        fclose(f);
+        uint32_t v4 = (uint32_t)offsetof(Song, slot_more);
+        size_t names8 = (size_t)(1 + NSLOT_V4) * NV * 8;
+        memcpy(buf + 4, &v4, 4);
+        memmove(buf + v4, buf + sizeof(Song), names8); /* drop the new fields and I's and J's names */
+        f = fopen(sp, "wb");
+        fwrite(buf, 1, v4 + names8, f);
+        fclose(f);
+        (void)got;
+        song_default();
+        int v4ok = song_load(sp) && *song_slot_used(&song, 2) && !*song_slot_used(&song, 8) &&
+                   !*song_slot_used(&song, 9) && song.switch_div == SW_BAR && !song.groove_ghost;
+        int at[NSWITCH], want_at = 1;
+        for (int d = 0; d < NSWITCH; d++) {
+            song_default();
+            engine_init(RATE);
+            slot_save(0);
+            song.pat.param[0][B_PITCH] = 3;
+            slot_save(1);
+            slot_load(0);
+            song.switch_div = (uint8_t)d;
+            engine_set_playing(1);
+            live.step = 0; /* the step before is from the run before */
+            static float b2[64];
+            while (live.step < 1)
+                render_mono(b2, 64);
+            slot_load(1);
+            at[d] = -1;
+            for (int n = 0; n < 200000 && at[d] < 0; n++) {
+                render_mono(b2, 64);
+                if (live.cur_slot == 1)
+                    at[d] = live.step;
+            }
+            engine_set_playing(0);
+            want_at &= at[d] == switch_steps(d);
+        }
+        printf("slots: %d, I and J saved and loaded %d, v0.4 save %d; switch on the beat %d, 1/2 bar %d, bar %d, "
+               "2 bars %d, 4 bars %d (want 1: %d)\n",
+               NSLOT, ij, v4ok, at[0], at[1], at[2], at[3], at[4], NSLOT == 10 && ij && v4ok && want_at);
+    }
+    /* ---- song files from the SONG page: B saves the set (B twice over one
+     * already there), A loads it, now when stopped and on the next SWITCH ON
+     * while playing; the output and sync settings stay the device's; half
+     * time stays on */
+    {
+        char sd[600], f3[700];
+        snprintf(sd, sizeof sd, "%s/songs", out);
+        snprintf(f3, sizeof f3, "%s/song03.sav", sd);
+        unlink(f3);
+        ui_set_song_dir(sd);
+        song_default();
+        engine_init(RATE);
+        ui_set_page(PAGE_SONG);
+        ui_button(BTN_UP, 1), ui_button(BTN_UP, 0);       /* from A up to the last row */
+        ui_button(BTN_RIGHT, 1), ui_button(BTN_RIGHT, 0); /* SONG */
+        for (int k = 0; k < 2; k++)
+            ui_button(BTN_X, 1), ui_button(BTN_X, 0); /* song 3 */
+        song.bpm = 150.f;
+        song.pat.param[1][B_PITCH] = 7;
+        slot_save(9);
+        song.groove_lock = 30;
+        song.switch_div = SW_HALF;
+        ui_button(BTN_B, 1), ui_button(BTN_B, 0);
+        int saved = access(f3, R_OK) == 0;
+        song_default();
+        song.out_mode = OUT_MONO_CLOCK;
+        song.sync_mode = SYNC_OFF;
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        ui_tick(10);
+        int loaded = song.bpm == 150.f && song.pat.param[1][B_PITCH] == 7 && *song_slot_used(&song, 9) &&
+                     song.groove_lock == 30 && song.switch_div == SW_HALF;
+        int device = song.out_mode == OUT_MONO_CLOCK && song.sync_mode == SYNC_OFF;
+        song.bpm = 120.f;
+        ui_button(BTN_B, 1), ui_button(BTN_B, 0); /* asks */
+        song.bpm = 99.f;
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        int asks = song.bpm == 150.f;
+        song.bpm = 120.f;
+        for (int k = 0; k < 2; k++)
+            ui_button(BTN_B, 1), ui_button(BTN_B, 0);
+        song.bpm = 99.f;
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        int over = song.bpm == 120.f;
+        /* while playing: in on the next half bar */
+        song.pat.param[1][B_PITCH] = 0;
+        engine_set_playing(1);
+        live.step = 0;
+        static float b2[64];
+        while (live.step < 1)
+            render_mono(b2, 64);
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        int waits = song.pat.param[1][B_PITCH] == 0 && live.queued_song != NULL;
+        ui_draw(fb);
+        char sp[600];
+        snprintf(sp, sizeof sp, "%s/songs.ppm", out);
+        write_ppm(sp, fb);
+        int in_at = -1;
+        for (int n = 0; n < 200000 && in_at < 0; n++) {
+            render_mono(b2, 64);
+            if (!live.queued_song)
+                in_at = live.step;
+        }
+        int switched = waits && in_at == 8 && song.pat.param[1][B_PITCH] == 7;
+        engine_set_playing(0);
+        ui_tick(10);
+        /* half time stays on, at half the song's tempo */
+        ui_half_time();
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        ui_tick(10);
+        int half = song.bpm == 60.f && ui_full_bpm() == 120.f;
+        ui_half_time();
+        ui_set_page(PAGE_PATTERN);
+        printf("song files: saved %d, loaded %d, device settings kept %d, saving over asks first %d then saves %d, "
+               "playing switches in at the 1/2 bar %d (step %d), half time kept %d (want 1: %d)\n",
+               saved, loaded, device, asks, over, switched, in_at, half,
+               saved && loaded && device && asks && over && switched && half);
+    }
+    /* ---- the one-touch fill: armed in the first half of the bar it plays the
+     * second half, ghost notes on beat 3 and the snare channel rolling every
+     * 16th of beat 4, then ends at the bar line by itself; later in the bar
+     * it starts on the next 16th, on the last 16th it waits for the next bar;
+     * again calls it off; stopped, nothing; the Brick's L2 tapped alone plays
+     * it, L2 + the d-pad doesn't. fill.wav: two bars, the fill in the first */
+    {
+        static float b2[64];
+        uint32_t hits[2] = {0, 0}, roll = 0;
+        int armed = 0, over = 0;
+        for (int k = 0; k < 2; k++) {
+            song_default();
+            engine_init(RATE);
+            engine_set_playing(0);
+            engine_set_playing(1);
+            live.step = 0;
+            while (live.step < 2)
+                render_mono(b2, 64);
+            if (k) {
+                ui_fill();
+                armed = live.fill_from == 8 && live.fill_to == 16 && live.fill_v == 1;
+            }
+            while (live.step < 8)
+                render_mono(b2, 64);
+            uint32_t t0 = 0;
+            for (int v = 0; v < NBRK; v++)
+                t0 += live.trig_count[v];
+            uint32_t r0 = 0;
+            while (live.step < 16) {
+                render_mono(b2, 64);
+                if (k && live.step == 10 && !over) {
+                    ui_draw(fb);
+                    char fp[600];
+                    snprintf(fp, sizeof fp, "%s/fill.ppm", out);
+                    write_ppm(fp, fb);
+                    over = 1;
+                }
+                if (live.step == 12 && !r0)
+                    r0 = live.trig_count[1] + 1; /* +1: never 0 */
+            }
+            for (int v = 0; v < NBRK; v++)
+                hits[k] += live.trig_count[v];
+            hits[k] -= t0;
+            if (k)
+                roll = live.trig_count[1] - (r0 - 1) + 1; /* steps 12..15, 12 counted before r0 was taken */
+        }
+        over = live.fill_to == 0;
+        engine_set_playing(0);
+        /* later in the bar, the last 16th, again, stopped */
+        engine_init(RATE);
+        engine_set_playing(0);
+        engine_set_playing(1);
+        live.step = 0;
+        while (live.step < 10)
+            render_mono(b2, 64);
+        ui_fill();
+        int late = live.fill_from == 11 && live.fill_to == 16;
+        ui_fill();
+        int off = live.fill_to == 0;
+        while (live.step < 14)
+            render_mono(b2, 64);
+        ui_fill();
+        int next_bar = live.fill_from == 24 && live.fill_to == 32;
+        engine_set_playing(0);
+        int stop_clears = live.fill_to == 0;
+        ui_fill();
+        int stopped = live.fill_to == 0;
+        /* the Brick: L2 alone tapped plays it, L2 + the d-pad not */
+        ui_l2_sticks(1);
+        engine_set_playing(1);
+        ui_button(BTN_L2, 1);
+        ui_button(BTN_L2, 0);
+        int tap = live.fill_to > 0;
+        ui_button(BTN_L2, 1);
+        ui_button(BTN_L2, 0); /* again: off */
+        ui_button(BTN_L2, 1);
+        ui_button(BTN_DOWN, 1);
+        ui_button(BTN_DOWN, 0);
+        ui_button(BTN_L2, 0);
+        int combo = live.fill_to == 0;
+        engine_set_playing(0);
+        ui_l2_sticks(0);
+        /* to listen to */
+        {
+            song_default();
+            engine_init(RATE);
+            engine_set_playing(0);
+            engine_set_playing(1);
+            live.step = 0;
+            int frames = (int)(2 * 16 * RATE * 15.f / song.bpm) / 512 * 512 + 512;
+            int16_t *pcm = malloc(sizeof(int16_t) * 2 * frames);
+            engine_render(pcm, 512);
+            ui_fill();
+            for (int done = 512; done < frames; done += 512)
+                engine_render(pcm + 2 * done, 512);
+            engine_set_playing(0);
+            char wp[600];
+            snprintf(wp, sizeof wp, "%s/fill.wav", out);
+            write_wav(wp, pcm, frames);
+            free(pcm);
+        }
+        printf("fill: armed for the 2nd half %d, hits in it %u -> %u, the snare rolls every 16th of beat 4 %d, "
+               "over at the bar line %d; later from the next 16th %d, again off %d, last 16th the next bar %d, "
+               "stop clears %d, stopped nothing %d; Brick L2 tap %d, L2 + d-pad not %d (want 1: %d)\n",
+               armed, hits[0], hits[1], roll == 4, over, late, off, next_bar, stop_clears, stopped, tap, combo,
+               armed && hits[1] > hits[0] && roll == 4 && over && late && off && next_bar && stop_clears && stopped &&
+                   tap && combo);
     }
     breaks_free();
     return 0;

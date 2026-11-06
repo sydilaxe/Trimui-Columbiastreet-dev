@@ -87,5 +87,5 @@ channel, 85-90 the tempo and bus, 102-113 the channel's cells, 114-116 the scene
 | 113 | Channel ALT cell ROTATE | 0 to its steps - 1 |
 | 114 | Scene M1 | 0-63 off, 64-127 on (if saved) |
 | 115 | Scene M2 | 0-63 off, 64-127 on (if saved) |
-| 116 | Pattern SLOT | 0-15 A, 16-31 B ... 112-127 H (saved slots; at the next bar while playing) |
+| 116 | Pattern SLOT | 0-12 A, 13-25 B ... 116-127 J (saved slots; at the next SWITCH ON while playing) |
 <!-- end cc table -->

@@ -14,8 +14,9 @@ cells:
 
 Every break channel has its own pitch, a filter, a **bit depth from 1 to 24 bits**, sample-rate
 reduction and a **compressor**. On the bus are a glue compressor, drive, a reverb, a
-tempo-synced L2 filter sweep, and punch-in repeat, reverse and tape-stop effects. Eight
-pattern slots switch on the bar line, and the unit syncs tempo over Wi-Fi with HI5 and
+tempo-synced L2 filter sweep, and punch-in repeat, reverse and tape-stop effects. Ten
+pattern slots switch in on the beat, the half bar, the bar, or every two or four bars, sets of them save as
+songs, and the unit syncs tempo over Wi-Fi with HI5 and
 Jaffedrone, leads other gear from a mono + clock-pulse output, and sends and follows MIDI clock
 over USB.
 
@@ -129,6 +130,7 @@ These work on every page:
 | START | Play / stop |
 | SELECT | A new jungle beat on all five channels, keeping the mutes and the mixer; R2+SELECT undoes it |
 | L2 (hold) | Brick Pro: low-pass sweep, closing over the time set on MIX > MASTER > L2. Brick: see below |
+| R3 (Brick Pro) / L2 tapped alone (Brick) | **Fill**: a one-touch fill to the end of the bar; press again to call it off (see [the fill](#the-fill)) |
 | L2 + d-pad (Brick) | Low-pass sweep, as the Brick Pro's left stick: any direction closes it over the MIX > MASTER > L2 time, let go and it opens |
 | L2 + X / A (Brick) | Repeat the last 1/8 / 1/16, as the Brick Pro's right stick up / right |
 | L2 + Y / B (Brick) | Reverse / tape stop, as the Brick Pro's right stick left / down |
@@ -137,12 +139,30 @@ These work on every page:
 | R2 + up / right | Brick Pro: repeat the last 1/8 / 1/16. Brick: the groove (see below) |
 | R2 + left / down | Brick Pro: reverse / tape stop. Brick: the groove (see below) |
 | R2 + X | Tap tempo (taps under 100 BPM count double) |
+| R2 + A | Keep the groove playing now with the pattern (on the Brick, while R2 + the d-pad plays it); see [the groove](#the-groove) |
+| R2 + B | Let the kept groove go |
 | F1 / F2 | Mute scene M1 / M2 on or off (see below) |
 | R2 + F1 / F2 | Save the mixer's mutes and solos as M1 / M2 |
 | R2 + L1 / R1 | M1 / M2 on or off; on the MIX page, save M1 / M2 |
 | Side switch (Brick) | Half time: up halves the tempo, down brings back the tempo it was |
 | HOME (Brick Pro, MustardOS) | Half time: the tempo halved; press again for the tempo it was |
 | MENU | Quit |
+
+### The fill
+
+One press for a fill into the next bar: R3 (the right stick's click) on the Brick Pro, L2 tapped on
+its own on the Brick. It plays the second half of the bar and ends at the bar line by itself:
+
+- **Beat 3:** ghost notes all over the break channels, on top of what they play.
+- **Beat 4:** the snare channel (the break channel playing a snare slice, BRK2 by default) rolls
+  on every 16th, a semitone higher and louder each time, ratcheted 1, 2, 2 then 4 times into
+  the downbeat.
+
+Pressed in the first half of the bar it waits for the half bar; later it starts on the next 16th;
+on the bar's last 16th it plays at the end of the next bar. The steps under the header light
+yellow where the fill will play. Press again to call it off. It changes nothing in the pattern,
+and it plays only while the sequencer runs. With SWITCH at the bar, a slot queued while the fill
+plays comes in right after it.
 
 ### Mute scenes
 
@@ -213,14 +233,24 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
 - **MIX**: a column per channel (LEVEL, PAN, SEND to the reverb) and the master (LEVEL, GLUE
   compressor, DRIVE, VERB time, TONE, and the L2 sweep time). A mutes, B solos; R2 + L1 / R1
   saves the mutes and solos as mute scene M1 / M2.
-- **SONG**: pattern slots A-H. A loads a slot (at the next bar while playing), X saves the
-  pattern into it, R2+Y clears it. Below them are the tempo, the Wi-Fi sync mode and the
-  output row (OUTPUT, CLOCK ON, PPQN, PULSE): left / right picks a setting, X / Y changes it.
+- **SONG**: pattern slots A-J. A loads a slot (at the next SWITCH while playing), X saves the
+  pattern into it, with its kept groove (a G marks the slot), R2+Y clears it. Below them are the
+  tempo, the Wi-Fi sync mode, the output row (OUTPUT, CLOCK ON, PPQN, PULSE) and the last row,
+  SWITCH and SONG: left / right picks a setting, X / Y changes it.
+  - **SWITCH** is when a slot or a song switches in while playing: on the next BEAT, 1/2 BAR, BAR
+    (as before), 2 BARS or 4 BARS. It is saved with the song.
+  - **SONG** keeps sets of patterns as songs, 1 to 16. X / Y picks one, B saves everything you'd
+    want back (the ten slots and their grooves, the pattern playing, the mixer, the tempo, the mute
+    scenes and SWITCH) to it, and A loads it: at once when stopped, at the next SWITCH while
+    playing, NEXT showing until it does. Saving over a song takes B twice. The number is orange
+    for the song last loaded or saved, dim where nothing is saved yet. The output, clock and Wi-Fi
+    sync settings stay as they are, and half time stays on. Songs are files in
+    `ColumbiaStreet/songs/` (`song01.sav`...), to copy off the card or between units.
 
 ## Brick Pro: the sticks
 
 The Brick Pro build adds the two analog sticks, for playing the bus live. They spring back when
-let go, and nothing they do is saved.
+let go, and only what you set with R2 + the left stick (the kept groove) is saved.
 
 The **side switch** (on the right, above the power button) picks what the left stick plays:
 down for the FILTER, up for the GROOVE (a GRV badge in the header). A message names it as
@@ -234,8 +264,9 @@ you flip it.
 | left, right / left (switch up) | Quiet ghost notes on the empty 16ths just after / just before the hits, more the further it goes |
 | right, up / right | Repeat the last 1/8 / 1/16, as R2 + up / right |
 | right, left / down | Reverse / tape stop, as R2 + left / down |
-| L3 (click) | Tap tempo |
-| R3 (click) | A new jungle beat, as SELECT |
+| R2 + left, any way (either switch position) | Sets the groove kept with the pattern: up / down moves the lock toward the breakbeats / the clave, right / left the ghost notes after / before the hits, faster the further over (all the way, about 1¼ s from nothing to full). It stays when you let go |
+| L3 (click) | Tap tempo; R2 + L3 lets the kept groove go |
+| R3 (click) | The fill (see [the fill](#the-fill)); SELECT is the new beat |
 
 R2 + the d-pad wins over the right stick while both are held.
 
@@ -247,7 +278,29 @@ doubles a tempo changed meanwhile. The song is saved at the full tempo. On anoth
 The groove changes the steps, never the cells: let go, and the pattern plays as programmed again.
 Diagonals combine the lock and the ghost notes.
 
-On the **Brick**, which has no sticks, **L2 stands in for them**. L2 alone does nothing; L2 + the
+### The groove
+
+The groove makes variations of the pattern that's there, without touching its cells:
+
+- **The lock** pulls each channel toward the rhythm closest to what it plays: up toward the
+  breakbeats, down toward the clave family.
+- **Ghost notes** are quiet hits of the channel's own slice on the empty 16ths around its hits,
+  the way a drummer plays them: right puts them just after the hits, left just before them, as a
+  drag into the hit. Up to 60% they take only the e and the a of the beat, next to a hit; further
+  over they reach two 16ths away and the 8th offbeats too. They never land on a beat, so the kick
+  and the backbeat stay clear. Bars 1 and 3 of every four play one set and bars 2 and 4 another,
+  and the second half of the fourth bar fills, more of them and louder into the next bar. The same
+  every four bars, so it grooves rather than wanders.
+
+A groove can be **kept with the pattern**, so it plays without holding anything: R2 + the left
+stick on the Brick Pro sets it (and R2 + A keeps the one playing), and R2 + B lets it go. Saving the
+pattern to a slot saves its groove too, so each slot can be a variation of the same beat: the same
+cells with more ghosts, or locked to the clave. The GRV badge lights while a groove plays, and the
+footer shows the kept one: B80 is the lock 80% toward the breakbeats (C the clave), >39 ghost notes
+39% after the hits (< before). The stick, pushed without R2, plays over the kept groove on the way
+it is pushed and goes back to it when let go.
+
+On the **Brick**, which has no sticks, **L2 stands in for them**. L2 tapped alone plays the fill; L2 + the
 d-pad is the left stick (any direction closes the low-pass, over the MIX > MASTER > L2 time, and
 let go it opens), and L2 + A / B / X / Y is the right stick, each button where the stick would
 point: X (top) repeats the last 1/8, A (right) the last 1/16, Y (left) reverses, B (bottom) stops
@@ -258,7 +311,8 @@ switch up: up locks the cells toward the breakbeat patterns, down toward the cla
 adds ghost notes after the hits, left before them; two directions at once combine, as a diagonal
 does. The d-pad can't be pushed part way, so each direction plays a set amount (the lock half way,
 a few ghost notes), and a GRV badge shows while it plays. Let go of R2 and the pattern plays as
-programmed again. The punch-in effects are on L2 + A / B / X / Y.
+programmed again, or press A while R2 + the d-pad plays to keep that groove with the pattern
+(R2 + B lets it go). The punch-in effects are on L2 + A / B / X / Y.
 
 The Brick has no HOME key either, so its side switch is **half time**:
 up halves the tempo (the 1/2 badge), down brings back the tempo it was, or doubles a tempo changed
