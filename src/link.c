@@ -130,7 +130,7 @@ int link_find(const char *sysfs, LinkDev *out, int max)
     while ((e = readdir(d)) && n < max) {
         if (e->d_name[0] == '.' || strchr(e->d_name, ':'))
             continue;
-        char p[512], v[32];
+        char p[1024], v[32];
         snprintf(p, sizeof p, "%s/%s/idVendor", sysfs, e->d_name);
         if (!get(p, v, sizeof v) || strtol(v, NULL, 16) != LINK_VID)
             continue;
@@ -138,7 +138,7 @@ int link_find(const char *sysfs, LinkDev *out, int max)
         if (!get(p, v, sizeof v) || strtol(v, NULL, 16) != LINK_PID)
             continue;
         /* the interface: ours, not some other gadget with the same ids */
-        char in[400];
+        char in[800];
         snprintf(in, sizeof in, "%s/%s/%s:1.0", sysfs, e->d_name, e->d_name);
         int cls = -1, sub = -1, pro = -1;
         snprintf(p, sizeof p, "%s/bInterfaceClass", in);
@@ -241,7 +241,7 @@ static int free_udc(char *udc, int n)
     while (d && (e = readdir(d))) {
         if (e->d_name[0] == '.' || !strcmp(e->d_name, "trimuilink"))
             continue;
-        char p[400], v[64];
+        char p[512], v[64];
         snprintf(p, sizeof p, "/sys/kernel/config/usb_gadget/%s/UDC", e->d_name);
         if (get(p, v, sizeof v)) {
             fprintf(stderr, "link: the bottom port is in use (gadget %s), not linking\n", e->d_name);

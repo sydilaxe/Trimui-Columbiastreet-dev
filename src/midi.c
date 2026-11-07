@@ -478,7 +478,7 @@ int midi_link_step(uint64_t t, uint8_t *out, int max)
 typedef struct {
     int fd;
     int link_ep, dead; /* a link: its bulk OUT endpoint (0 for a MIDI port); it went */
-    char path[128], name[32];
+    char path[300], name[32];
 } Port;
 static Port ports[MAXPORT];
 static int nports;

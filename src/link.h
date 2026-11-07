@@ -29,7 +29,7 @@ int link_follow_state(void);
  * (/sys/bus/usb/devices), at most max */
 typedef struct {
     int bus, dev, ep; /* the usbfs device and its bulk OUT endpoint address */
-    char path[128];   /* the sysfs folder, to tell when it goes */
+    char path[300];   /* the sysfs folder, to tell when it goes */
 } LinkDev;
 int link_find(const char *sysfs, LinkDev *out, int max);
 
