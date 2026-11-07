@@ -104,7 +104,16 @@ typedef struct {
      * beat's dynamics and lean, engine_step_gain) */
     int8_t swing, breath;
     int8_t slot_feel[NSLOT][2];
+    /* v0.6: MIDI clock over USB (MIDI_*), the device's like the Wi-Fi sync mode;
+     * midi_clock_only: follow the clock's tempo (and over the Brick link, its
+     * bar) but not START, STOP, CONTINUE or song position */
+    uint8_t midi_mode, midi_clock_only;
 } Song;
+
+/* the MIDI clock: AUTO sends it and follows one that comes in, SEND always
+ * sends it and ignores one coming in, FOLLOW only follows, OFF neither (notes
+ * and CCs still come in). AUTO is 0, what older songs have */
+enum { MIDI_AUTO, MIDI_SEND, MIDI_FOLLOW, MIDI_OFF, NMIDIMODE };
 
 /* when a queued slot or song switches in */
 enum { SW_BEAT, SW_HALF, SW_BAR, SW_2BARS, SW_4BARS, NSWITCH };
@@ -173,13 +182,13 @@ void engine_audition(int v);
  * a note off; any thread. Played at the start of the next block. */
 void engine_note(int ch, int note, int vel);
 void engine_set_playing(int on);
-/* the one-touch fill, to the end of the bar: the second half of it, from the
- * next 16th once that has begun, or of the next bar on its last 16th. A
- * drummer's fill on the pattern's own kick and snare, one of several shapes,
- * never the same twice running; the break running in GRID drops out for it.
+/* the one-touch fill, from the next 16th to the end of the bar (on its last
+ * 16th, the whole next bar). A drummer's fill on the pattern's own kick and
+ * snare, one of several shapes (a lead-in over beats 1 and 2, the fill over 3
+ * and 4), never the same twice running; the break running in GRID drops out.
  * 1 armed, -1 a fill already armed or playing called off, 0 stopped. Under the lock. */
 int engine_fill(void);
-/* fill shape i over the 16ths of beats 3 and 4 (8 characters): K kick,
+/* fill shape i over the bar's 16ths (16 characters): K kick,
  * S snare, g ghost snare, f flammed snare, r a 32nd pair on the snare, . rest */
 const char *engine_fill_shape(int i);
 int engine_fill_shapes(void);

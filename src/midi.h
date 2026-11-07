@@ -16,8 +16,10 @@
  * sequencer plays and no clock is coming in. The clock goes out as the sound
  * is heard, the audio buffer's time behind the engine.
  *
- * Settings, in launch.sh: CS_MIDI=0 turns it off, CS_MIDI_CLOCK=0 sends no
- * clock, CS_MIDI_FOLLOW=0 ignores the clock coming in. */
+ * Which way the clock goes is the SONG page's MIDI setting (song.midi_mode:
+ * AUTO as above, SEND always, FOLLOW only, OFF neither). In launch.sh:
+ * CS_MIDI=0 turns MIDI off, CS_MIDI_CLOCK=0 never sends clock, CS_MIDI_FOLLOW=0
+ * never follows it, whatever the setting. */
 #pragma once
 #include <stdint.h>
 
@@ -27,6 +29,10 @@ void midi_set_latency(float seconds); /* from the engine's position to the sound
 /* messages for the screen ("MIDI: <device>"), main thread */
 int midi_take_notice(char *buf, int n);
 int midi_following(void);    /* an outside clock leads */
+int midi_ports(void);        /* the MIDI ports open, links included (for the screen) */
+int midi_links(void);        /* Bricks following this one over the USB clock link (link.h) */
+/* a message for the screen, any thread (fmt with one %s) */
+void midi_notice(const char *fmt, const char *arg);
 /* the next CC (for ui_midi_cc), main thread; 0 when there's none */
 int midi_take_cc(int *ch, int *cc, int *v);
 
@@ -34,5 +40,10 @@ int midi_take_cc(int *ch, int *cc, int *v);
  * harness: bytes in, as if from a port, at a time in microseconds */
 void midi_feed(const uint8_t *b, int n, uint64_t now_us);
 void midi_reset(void);
+/* the leading Brick's position for the ones following over the link: its
+ * bytes (F0 7D 'T' 'L' ... F7, see midi.c), and when they are due (every 20 ms
+ * while the clock goes out; 0 when not) */
+int midi_link_pos(uint8_t *out, int max, double heard, double bpm, int playing);
+int midi_link_step(uint64_t now_us, uint8_t *out, int max);
 /* the clock out, stepped by hand: returns the bytes it would send now */
 int midi_clock_step(uint64_t now_us, uint8_t *out, int max);

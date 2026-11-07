@@ -28,6 +28,7 @@
 #include "engine.h"
 #include "gfx.h"
 #include "leds.h"
+#include "link.h"
 #include "midi.h"
 #include "perflog.h"
 #include "net.h"
@@ -912,8 +913,11 @@ int main(int argc, char **argv)
     sync_init();
     /* the clock out leaves as the sound is heard, the device's buffer behind the engine */
     midi_set_latency((float)bufsz / rate);
-    if (env_int("CS_MIDI", 1))
+    if (env_int("CS_MIDI", 1)) {
         midi_start(-1);
+        /* the bottom port as a clock link: a Brick with a hub can lead this one (link.h) */
+        link_follow_start();
+    }
     int update_auto = env_int("CS_UPDATE", 1) != 0, update_tries = 0;
     update_detect_package("."); /* TrimUI OS's zip, or MustardOS's .muxapp */
     if (update_auto) {
@@ -974,6 +978,7 @@ int main(int argc, char **argv)
     save_song();
     switch_close();
     leds_stop();
+    link_follow_stop(); /* the bottom port given back */
     midi_stop();
     sync_close();
     if (dev)
