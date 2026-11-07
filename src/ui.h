@@ -48,7 +48,8 @@ void ui_tap_tempo(void); /* L3; R2 + L3 lets the kept groove go */
 /* the one-touch fill to the end of the bar (engine_fill); again calls it off.
  * R3 on the Brick Pro; on the Brick, L2 tapped alone does the same */
 void ui_fill(void);
-/* the Brick Pro's R3: ui_fill, or with R2 held every break channel's LENGTH at 20% */
+/* the Brick Pro's R3: ui_fill, or with R2 held every break channel's LENGTH
+ * at 20%, and back to the lengths they had on the next R2 + R3 */
 void ui_r3(void);
 /* the Brick Pro's left stick (-1..1, up positive) and the side switch (groove
  * 1: it plays the groove, 0 the filter). With R2 held it changes the groove

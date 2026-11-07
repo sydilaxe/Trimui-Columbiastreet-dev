@@ -388,7 +388,7 @@ static int groove_mode;
  *                last 1/8, right the last 1/16, left reverses, down stops
  *                the tape
  *   L3           tap tempo (R2 + L3: no kept groove);  R3  the fill (R2 + R3:
- *                every break channel's LENGTH at 20%; ui_r3)
+ *                every break channel's LENGTH at 20%, again back; ui_r3)
  * Axes: pad_axes above. */
 static float stick[AX_RY + 1]; /* by AX_LX .. AX_RY: -1 .. 1, centre dead zone removed */
 static int stick_fx_now = -1;

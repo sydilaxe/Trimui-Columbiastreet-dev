@@ -130,7 +130,7 @@ These work on every page:
 | START | Play / stop |
 | SELECT | A new jungle beat on all five channels, keeping the mutes and the mixer; R2+SELECT undoes it |
 | L2 (hold) | Brick Pro: low-pass sweep, closing over the time set on MIX > MASTER > L2. Brick: see below |
-| R2 + R3 (Brick Pro) | Every break channel's slice LENGTH to 20% |
+| R2 + R3 (Brick Pro) | Every break channel's slice LENGTH to 20%; again, back to how they were |
 | R3 (Brick Pro) / L2 tapped alone (Brick) | **Fill**: a one-touch fill to the end of the bar; press again to call it off (see [the fill](#the-fill)) |
 | L2 + d-pad (Brick) | Low-pass sweep, as the Brick Pro's left stick: any direction closes it over the MIX > MASTER > L2 time, let go and it opens |
 | L2 + X / A (Brick) | Repeat the last 1/8 / 1/16, as the Brick Pro's right stick up / right |
@@ -274,7 +274,7 @@ you flip it.
 | R2 + left, any way (either switch position) | Sets the groove kept with the pattern: up / down moves the lock toward the breakbeats / the clave, right / left the ghost notes after / before the hits, faster the further over (all the way, about 1¼ s from nothing to full). It stays when you let go |
 | L3 (click) | Tap tempo; R2 + L3 lets the kept groove go |
 | R3 (click) | The fill (see [the fill](#the-fill)); SELECT is the new beat |
-| R2 + R3 | Every break channel's LENGTH (CHOP page) to 20%: short, choked slices. It changes the pattern as LENGTH does, so set it back on CHOP, or load a slot saved before |
+| R2 + R3 | Every break channel's LENGTH (CHOP page) to 20%: short, choked slices. R2 + R3 again puts back the lengths they had (a channel whose LENGTH changed in between, by hand or with a slot or song, keeps its new one). Saved with the pattern while it is on, as LENGTH is |
 
 R2 + the d-pad wins over the right stick while both are held.
 
