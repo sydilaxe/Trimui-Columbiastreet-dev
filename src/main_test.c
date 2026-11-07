@@ -1504,52 +1504,62 @@ int main(int argc, char **argv)
                saved && loaded && device && asks && over && switched && half);
     }
     /* ---- the one-touch fill: armed in the first half of the bar it plays the
-     * second half, ghost notes on beat 3 and the snare channel rolling every
-     * 16th of beat 4, then ends at the bar line by itself; later in the bar
-     * it starts on the next 16th, on the last 16th it waits for the next bar;
-     * again calls it off; stopped, nothing; the Brick's L2 tapped alone plays
-     * it, L2 + the d-pad doesn't. fill.wav: two bars, the fill in the first */
+     * second half, a drummer's fill: the kick and snare channels play one of
+     * the shapes, hit for hit, while the break running in GRID drops out, and
+     * it ends at the bar line by itself; the shapes change, never the same
+     * twice running; later in the bar it starts on the next 16th, on the last
+     * 16th it waits for the next bar; again calls it off; stopped, nothing;
+     * the Brick's L2 tapped alone plays it, L2 + the d-pad doesn't.
+     * fill.wav: two bars, the fill in the first */
     {
         static float b2[64];
-        uint32_t hits[2] = {0, 0}, roll = 0;
-        int armed = 0, over = 0;
-        for (int k = 0; k < 2; k++) {
-            song_default();
-            engine_init(RATE);
-            engine_set_playing(0);
-            engine_set_playing(1);
-            live.step = 0;
-            while (live.step < 2)
-                render_mono(b2, 64);
-            if (k) {
-                ui_fill();
-                armed = live.fill_from == 8 && live.fill_to == 16 && live.fill_v == 1;
+        int armed = 0, over = 0, plays = 0, grid_out = 0, shape = 0;
+        song_default();
+        engine_init(RATE);
+        engine_set_playing(0);
+        engine_set_playing(1);
+        live.step = 0;
+        while (live.step < 2)
+            render_mono(b2, 64);
+        ui_fill();
+        shape = live.fill_shape;
+        armed = live.fill_from == 8 && live.fill_to == 16 && live.fill_snare == 1 && live.fill_kick == 0;
+        while (live.step < 7)
+            render_mono(b2, 64);
+        uint32_t k0 = live.trig_count[0], s0 = live.trig_count[1];
+        while (live.step < 15) {
+            render_mono(b2, 64);
+            if (live.step == 10 && !over) {
+                ui_draw(fb);
+                char fp[600];
+                snprintf(fp, sizeof fp, "%s/fill.ppm", out);
+                write_ppm(fp, fb);
+                over = 1;
             }
-            while (live.step < 8)
-                render_mono(b2, 64);
-            uint32_t t0 = 0;
-            for (int v = 0; v < NBRK; v++)
-                t0 += live.trig_count[v];
-            uint32_t r0 = 0;
-            while (live.step < 16) {
-                render_mono(b2, 64);
-                if (k && live.step == 10 && !over) {
-                    ui_draw(fb);
-                    char fp[600];
-                    snprintf(fp, sizeof fp, "%s/fill.ppm", out);
-                    write_ppm(fp, fb);
-                    over = 1;
-                }
-                if (live.step == 12 && !r0)
-                    r0 = live.trig_count[1] + 1; /* +1: never 0 */
-            }
-            for (int v = 0; v < NBRK; v++)
-                hits[k] += live.trig_count[v];
-            hits[k] -= t0;
-            if (k)
-                roll = live.trig_count[1] - (r0 - 1) + 1; /* steps 12..15, 12 counted before r0 was taken */
+            if (live.step == 13)
+                grid_out = live.play_pos[3] < 0.f;
         }
+        const char *sh = engine_fill_shape(shape);
+        uint32_t want_k = 0, want_s = 0;
+        for (int i = 0; i < 8; i++)
+            want_k += sh[i] == 'K', want_s += sh[i] != 'K' && sh[i] != '.';
+        plays = live.trig_count[0] - k0 == want_k && live.trig_count[1] - s0 == want_s;
+        while (live.step < 16)
+            render_mono(b2, 64);
         over = live.fill_to == 0;
+        /* twelve fills, one a bar */
+        int prev = shape, repeats = 0, seen = 1 << shape, kinds = 0;
+        for (int n = 0; n < 12; n++) {
+            ui_fill();
+            repeats += live.fill_shape == prev;
+            prev = live.fill_shape;
+            seen |= 1 << prev;
+            int stop = live.fill_to;
+            while (live.step < stop)
+                render_mono(b2, 64);
+        }
+        for (int i = 0; i < engine_fill_shapes(); i++)
+            kinds += seen >> i & 1;
         engine_set_playing(0);
         /* later in the bar, the last 16th, again, stopped */
         engine_init(RATE);
@@ -1604,12 +1614,116 @@ int main(int argc, char **argv)
             write_wav(wp, pcm, frames);
             free(pcm);
         }
-        printf("fill: armed for the 2nd half %d, hits in it %u -> %u, the snare rolls every 16th of beat 4 %d, "
-               "over at the bar line %d; later from the next 16th %d, again off %d, last 16th the next bar %d, "
-               "stop clears %d, stopped nothing %d; Brick L2 tap %d, L2 + d-pad not %d (want 1: %d)\n",
-               armed, hits[0], hits[1], roll == 4, over, late, off, next_bar, stop_clears, stopped, tap, combo,
-               armed && hits[1] > hits[0] && roll == 4 && over && late && off && next_bar && stop_clears && stopped &&
-                   tap && combo);
+        printf("fill: armed for the 2nd half %d, shape %s played hit for hit %d, the GRID break out %d, over at the "
+               "bar line %d; 12 more: twice running %d, %d of %d shapes; later from the next 16th %d, again off %d, "
+               "last 16th the next bar %d, stop clears %d, stopped nothing %d; Brick L2 tap %d, L2 + d-pad not %d "
+               "(want 1: %d)\n",
+               armed, sh, plays, grid_out, over, repeats, kinds, engine_fill_shapes(), late, off, next_bar, stop_clears,
+               stopped, tap, combo,
+               armed && plays && grid_out && over && !repeats && kinds >= 5 && late && off && next_bar && stop_clears &&
+                   stopped && tap && combo);
+    }
+    /* ---- the groove's feel on the SONG page's GROOVE row: SWING delays the
+     * 16ths between the 8ths (75%: half a 16th) and leaves the rest on the
+     * grid; BREATH softens all but the beats, swells into the fourth bar and
+     * leans the off-beat hits a little late; at 0 nothing moves (session.wav);
+     * X / Y / A on the row change them; a slot keeps them; R2 + B lets go */
+    {
+        static float b1[1];
+        int delay[16];
+        song_default();
+        song.swing = 25;
+        Cell *c = &song.pat.cell[0][ROW_HIT];
+        c->on = 1, c->hits = 16, c->steps = 16, c->rot = 0;
+        song.pat.cell[0][ROW_ROLL].on = song.pat.cell[0][ROW_ALT].on = 0;
+        engine_init(RATE);
+        engine_set_playing(0);
+        engine_set_playing(1);
+        live.step = -1;
+        int at = 0, step_at = 0, cur = -1;
+        uint32_t t = live.trig_count[0];
+        for (int i = 0; i < 16; i++)
+            delay[i] = -1;
+        while (cur < 16 && at < RATE * 4) {
+            render_mono(b1, 1);
+            at++;
+            if (live.step != cur)
+                cur = live.step, step_at = at;
+            if (live.trig_count[0] != t) {
+                t = live.trig_count[0];
+                if (cur >= 0 && cur < 16 && delay[cur] < 0)
+                    delay[cur] = at - step_at;
+            }
+        }
+        engine_set_playing(0);
+        float sps = RATE * 15.f / song.bpm;
+        int swing_ok = 1;
+        for (int i = 0; i < 16; i++)
+            swing_ok &= i & 1 ? abs(delay[i] - (int)(0.5f * sps)) <= 2 : delay[i] == 0;
+        /* breath */
+        song.swing = 0;
+        song.breath = 0;
+        int flat = 1;
+        for (int st = 0; st < 64; st++)
+            flat &= engine_step_gain(st) == 1.f;
+        song.breath = 100;
+        /* in the fourth bar the beat is full, the 8th offbeat softer, the 16th between softer still;
+         * the same step in the first bar softer than in the fourth */
+        int shape = engine_step_gain(48) == 1.f && engine_step_gain(50) < 1.f &&
+                    engine_step_gain(49) < engine_step_gain(50) && engine_step_gain(1) < engine_step_gain(49);
+        engine_init(RATE);
+        engine_set_playing(1);
+        live.step = -1;
+        at = 0, cur = -1, t = live.trig_count[0];
+        int lean = -1, beat = -1;
+        while (cur < 3 && at < RATE) {
+            render_mono(b1, 1);
+            at++;
+            if (live.step != cur)
+                cur = live.step, step_at = at;
+            if (live.trig_count[0] != t) {
+                t = live.trig_count[0];
+                if (cur == 0 && beat < 0)
+                    beat = at - step_at;
+                if (cur == 2 && lean < 0)
+                    lean = at - step_at;
+            }
+        }
+        engine_set_playing(0);
+        int lean_ok = beat == 0 && lean >= 0 && lean <= (int)(0.06f * sps) + 1;
+        song.breath = 0;
+        /* the GROOVE row: from SWITCH / SONG up one row, right to SWING */
+        ui_set_page(PAGE_SONG);
+        ui_button(BTN_UP, 1), ui_button(BTN_UP, 0);
+        ui_button(BTN_RIGHT, 1), ui_button(BTN_RIGHT, 0);
+        ui_button(BTN_RIGHT, 1), ui_button(BTN_RIGHT, 0);
+        ui_button(BTN_X, 1), ui_button(BTN_X, 0);
+        int row_swing = song.swing == 1;
+        ui_button(BTN_RIGHT, 1), ui_button(BTN_RIGHT, 0);
+        for (int k = 0; k < 3; k++)
+            ui_button(BTN_X, 1), ui_button(BTN_X, 0);
+        int row_breath = song.breath == 3;
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        row_breath &= song.breath == 0;
+        song.swing = 8, song.breath = 40;
+        ui_draw(fb);
+        char gp[600];
+        snprintf(gp, sizeof gp, "%s/groove_row.ppm", out);
+        write_ppm(gp, fb);
+        slot_save(4);
+        song.swing = song.breath = 0;
+        slot_load(4);
+        int slot = song.swing == 8 && song.breath == 40;
+        ui_button(BTN_R2, 1);
+        ui_button(BTN_B, 1), ui_button(BTN_B, 0);
+        ui_button(BTN_R2, 0);
+        int cleared = !song.swing && !song.breath;
+        ui_set_page(PAGE_PATTERN);
+        printf("feel: swing 75%% delays the 16ths between the 8ths half a 16th, the rest on the grid %d; breath 0 flat %d, "
+               "beats full, offbeats softer, the phrase swelling %d, a lean of %d frames, the beat on time %d; the GROOVE "
+               "row: swing %d, breath %d; a slot keeps them %d; R2+B lets go %d (want 1: %d)\n",
+               swing_ok, flat, shape, lean, lean_ok, row_swing, row_breath, slot, cleared,
+               swing_ok && flat && shape && lean_ok && row_swing && row_breath && slot && cleared);
     }
     breaks_free();
     return 0;

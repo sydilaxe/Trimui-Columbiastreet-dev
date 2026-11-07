@@ -99,6 +99,11 @@ typedef struct {
     int8_t groove_lock, groove_ghost;
     int8_t slot_groove[NSLOT][2];
     uint8_t switch_div; /* SW_* */
+    /* the groove's feel, kept with the pattern and each slot as the lock and
+     * ghosts are: swing 0..25 (50% straight to 75%), breath 0..100 (the
+     * beat's dynamics and lean, engine_step_gain) */
+    int8_t swing, breath;
+    int8_t slot_feel[NSLOT][2];
 } Song;
 
 /* when a queued slot or song switches in */
@@ -128,8 +133,10 @@ typedef struct {
     int queued_slot;       /* pattern slot switching in at the next song.switch_div, or -1 */
     const Song *queued_song; /* a song switching in the same way, or NULL */
     /* the one-touch fill: steps fill_from .. fill_to - 1 (counted as
-     * live.step), fill_to 0 when there's none; fill_v the channel that rolls */
-    int fill_from, fill_to, fill_v;
+     * live.step), fill_to 0 when there's none; the channels playing its
+     * snare and its kick (the same one when no other plays a kick), and
+     * which of the fill shapes it plays */
+    int fill_from, fill_to, fill_snare, fill_kick, fill_shape;
     volatile uint32_t songs_loaded; /* counts the songs switched in */
     int cur_slot;          /* slot last loaded or saved, or -1 */
     volatile int step;
@@ -167,10 +174,15 @@ void engine_audition(int v);
 void engine_note(int ch, int note, int vel);
 void engine_set_playing(int on);
 /* the one-touch fill, to the end of the bar: the second half of it, from the
- * next 16th once that has begun, or of the next bar on its last 16th. Ghost
- * notes all over beat 3, then the snare channel rolls up into the bar line.
+ * next 16th once that has begun, or of the next bar on its last 16th. A
+ * drummer's fill on the pattern's own kick and snare, one of several shapes,
+ * never the same twice running; the break running in GRID drops out for it.
  * 1 armed, -1 a fill already armed or playing called off, 0 stopped. Under the lock. */
 int engine_fill(void);
+/* fill shape i over the 16ths of beats 3 and 4 (8 characters): K kick,
+ * S snare, g ghost snare, f flammed snare, r a 32nd pair on the snare, . rest */
+const char *engine_fill_shape(int i);
+int engine_fill_shapes(void);
 /* transport position in 16th steps with fraction, a hard jump, and a
  * playback speed trim for the Wi-Fi sync (1.0 = none); all under the lock */
 double engine_position(void);
@@ -185,6 +197,7 @@ int groove_flags(int v, int step);
 float groove_ghost_at(int v, int step);
 float groove_lock_now(void);  /* live.groove_lock, or the kept one: -1..1 */
 float groove_ghost_now(void);
+float engine_step_gain(int step); /* BREATH's dynamics for a step: 1 at 0 */
 void euclid_permute(Cell *c);
 void song_default(void);
 void pattern_generate(Pattern *p, unsigned seed); /* a fresh jungle pattern */

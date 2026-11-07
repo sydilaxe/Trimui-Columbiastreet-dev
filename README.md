@@ -140,7 +140,7 @@ These work on every page:
 | R2 + left / down | Brick Pro: reverse / tape stop. Brick: the groove (see below) |
 | R2 + X | Tap tempo (taps under 100 BPM count double) |
 | R2 + A | Keep the groove playing now with the pattern (on the Brick, while R2 + the d-pad plays it); see [the groove](#the-groove) |
-| R2 + B | Let the kept groove go |
+| R2 + B | Let the kept groove go (lock, ghosts, swing and breath) |
 | F1 / F2 | Mute scene M1 / M2 on or off (see below) |
 | R2 + F1 / F2 | Save the mixer's mutes and solos as M1 / M2 |
 | R2 + L1 / R1 | M1 / M2 on or off; on the MIX page, save M1 / M2 |
@@ -151,12 +151,14 @@ These work on every page:
 ### The fill
 
 One press for a fill into the next bar: R3 (the right stick's click) on the Brick Pro, L2 tapped on
-its own on the Brick. It plays the second half of the bar and ends at the bar line by itself:
+its own on the Brick. It plays the second half of the bar and ends at the bar line by itself.
 
-- **Beat 3:** ghost notes all over the break channels, on top of what they play.
-- **Beat 4:** the snare channel (the break channel playing a snare slice, BRK2 by default) rolls
-  on every 16th, a semitone higher and louder each time, ratcheted 1, 2, 2 then 4 times into
-  the downbeat.
+It's a drummer's fill rather than a roll: the pattern's own kick and snare (the channels playing
+them, BRK1 and BRK2 by default) leave the groove and play one of eight shapes over beats 3 and 4,
+a different one each time and never the same twice running. They mix syncopated snares, quiet
+ghost snares, flams, kicks picking up the one and space before it; only one ends on a short 32nd
+pair. A break running straight in GRID drops out for the fill, so it can be heard; the other
+channels and the bass play on.
 
 Pressed in the first half of the bar it waits for the half bar; later it starts on the next 16th;
 on the bar's last 16th it plays at the end of the next bar. The steps under the header light
@@ -235,8 +237,12 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
   saves the mutes and solos as mute scene M1 / M2.
 - **SONG**: pattern slots A-J. A loads a slot (at the next SWITCH while playing), X saves the
   pattern into it, with its kept groove (a G marks the slot), R2+Y clears it. Below them are the
-  tempo, the Wi-Fi sync mode, the output row (OUTPUT, CLOCK ON, PPQN, PULSE) and the last row,
+  TEMPO and the Wi-Fi SYNC mode (one row), the output row (OUTPUT, CLOCK ON, PPQN, PULSE), the GROOVE row and the last row,
   SWITCH and SONG: left / right picks a setting, X / Y changes it.
+  - **GROOVE** is the groove kept with the pattern (see [the groove](#the-groove)): LOCK (B toward the
+    breakbeats, C the clave), GHOSTS (> after the hits, < before, how many), SWING (50% straight to
+    75%) and BREATH (the beat's dynamics and lean). X / Y change one, faster held; A turns it off.
+    Saving the pattern to a slot saves them with it.
   - **SWITCH** is when a slot or a song switches in while playing: on the next BEAT, 1/2 BAR, BAR
     (as before), 2 BARS or 4 BARS. It is saved with the song.
   - **SONG** keeps sets of patterns as songs, 1 to 16. X / Y picks one, B saves everything you'd
@@ -292,12 +298,21 @@ The groove makes variations of the pattern that's there, without touching its ce
   and the second half of the fourth bar fills, more of them and louder into the next bar. The same
   every four bars, so it grooves rather than wanders.
 
-A groove can be **kept with the pattern**, so it plays without holding anything: R2 + the left
-stick on the Brick Pro sets it (and R2 + A keeps the one playing), and R2 + B lets it go. Saving the
+Two more settings shape how the beat breathes:
+
+- **SWING** delays the 16ths between the 8ths, from 50% (straight) to 75% (half a 16th late, a
+  heavy shuffle). The beats and the 8ths stay on the grid.
+- **BREATH** gives the beat dynamics: the beats as they are, the 8th offbeats a little softer, the
+  16ths between softer still, the hits off the beat leaning a touch late (a little more on some
+  than others, the same every bar), and each four bars swelling into the fourth.
+
+A groove can be **kept with the pattern**, so it plays without holding anything. The SONG page's
+GROOVE row sets all four, LOCK, GHOSTS, SWING and BREATH; R2 + the left stick on the Brick Pro sets
+the lock and the ghosts on any page (and R2 + A keeps the one playing), and R2 + B lets all of it go. Saving the
 pattern to a slot saves its groove too, so each slot can be a variation of the same beat: the same
 cells with more ghosts, or locked to the clave. The GRV badge lights while a groove plays, and the
 footer shows the kept one: B80 is the lock 80% toward the breakbeats (C the clave), >39 ghost notes
-39% after the hits (< before). The stick, pushed without R2, plays over the kept groove on the way
+39% after the hits (< before), SW58 a 58% swing, BR40 the breath at 40. The stick, pushed without R2, plays over the kept groove on the way
 it is pushed and goes back to it when let go.
 
 On the **Brick**, which has no sticks, **L2 stands in for them**. L2 tapped alone plays the fill; L2 + the
