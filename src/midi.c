@@ -33,6 +33,10 @@ static volatile float latency_s = 0.02f;
 
 void midi_set_latency(float seconds) { latency_s = seconds < 0.f ? 0.f : seconds; }
 
+/* the SONG page's MIDI setting over launch.sh's CS_MIDI_CLOCK / CS_MIDI_FOLLOW */
+static int can_follow(void) { return follow && (song.midi_mode == MIDI_AUTO || song.midi_mode == MIDI_FOLLOW); }
+static int can_send(void) { return clock_out && (song.midi_mode == MIDI_AUTO || song.midi_mode == MIDI_SEND); }
+
 /* ------------------------------------------------------------- notices */
 
 static pthread_mutex_t nmx = PTHREAD_MUTEX_INITIALIZER;
@@ -93,7 +97,7 @@ static void clock_tick(uint64_t t)
     }
     tick_us = t;
     ext_seen_us = t;
-    if (!follow || tick_avg_us <= 0.0)
+    if (!can_follow() || tick_avg_us <= 0.0)
         return;
     following = 1;
     float bpm = (float)(60e6 / (tick_avg_us * 24.0));
@@ -124,7 +128,7 @@ static void realtime(uint8_t b, uint64_t t)
     switch (b) {
     case 0xf8: clock_tick(t); break;
     case 0xfa: /* START: from the top */
-        if (!follow)
+        if (!can_follow())
             break;
         ticks = 0;
         ext_running = 1;
@@ -134,7 +138,7 @@ static void realtime(uint8_t b, uint64_t t)
         engine_set_playing(1);
         break;
     case 0xfb: /* CONTINUE: from the song position */
-        if (!follow)
+        if (!can_follow())
             break;
         ext_running = 1;
         engine_set_playing(1);
@@ -144,7 +148,7 @@ static void realtime(uint8_t b, uint64_t t)
             settle = 6;
         break;
     case 0xfc: /* STOP */
-        if (!follow)
+        if (!can_follow())
             break;
         ext_running = 0;
         engine_set_rate(1.0);
@@ -199,7 +203,7 @@ static void message(uint64_t t)
         __sync_synchronize();
         ccq_w++;
     }
-    if (status == 0xf2 && follow) { /* song position, in 16ths */
+    if (status == 0xf2 && can_follow()) { /* song position, in 16ths */
         ticks = (int64_t)((data[1] << 7) | data[0]) * 6;
         if (live.playing)
             engine_set_position(ticks / 6.0 + latency_s * song.bpm / 15.0);
@@ -273,7 +277,7 @@ static uint64_t out_t;
 int midi_clock_step(uint64_t t, uint8_t *out, int max)
 {
     int n = 0;
-    int play = live.playing && clock_out && !following;
+    int play = live.playing && can_send() && !following;
     if (!play) {
         if (out_running && n < max)
             out[n++] = 0xfc;
@@ -318,6 +322,7 @@ typedef struct {
 } Port;
 static Port ports[MAXPORT];
 static int nports;
+int midi_ports(void) { return nports; }
 
 static void port_name(int card, char *b, int n)
 {
@@ -417,7 +422,7 @@ static void *loop(void *arg)
             else if (r == 0 || (errno != EAGAIN && errno != EINTR))
                 drop(i);
         }
-        if (following && t - ext_seen_us > 1000000) { /* the outside clock has stopped */
+        if (following && (t - ext_seen_us > 1000000 || !can_follow())) { /* the outside clock has stopped, or MIDI is set not to follow it */
             ui_lock();
             following = ext_running = 0;
             engine_set_rate(1.0);

@@ -155,6 +155,7 @@ jobs:
           grep -q "^fill: .*(want 1: 1)" $r
           grep -q "^feel: .*(want 1: 1)" $r
           grep -q "^r2+r3: .*(want 1: 1)" $r
+          grep -q "^midi modes .*(want 1: 1)" $r
           grep -q "^half time: .*(want 1: 1)" $r
           grep -q "^brick l2: .*(want 1: 1)" $r
           grep -q "^brick r2: .*(want 1: 1)" $r

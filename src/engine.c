@@ -964,19 +964,21 @@ static void pattern_load_now(int i)
 
 static void song_switch_in(const Song *s);
 
-/* The fill's shapes over the 16ths of beats 3 and 4, as a drummer plays a
- * funky fill rather than a roll: K kick, S snare, g a ghost snare, f a
- * flammed snare (a grace note just before), r a 32nd pair on the snare (the
- * one shape with anything like a roll), . nothing: the space counts too. */
+/* The fill's shapes over the bar's 16ths, as a drummer plays a funky fill
+ * rather than a roll: beats 1 and 2 a lighter lead-in (a fill started there
+ * plays it), beats 3 and 4 the fill itself. K kick, S snare, g a ghost snare,
+ * f a flammed snare (a grace note just before), r a 32nd pair on the snare
+ * (the one shape with anything like a roll), . nothing: the space counts too. */
 static const char *const fill_shapes[] = {
-    "S.gS.gS.", /* syncopated snares on the and and the a */
-    "K.S.KS.S", /* kick and snare answering each other */
-    "gSg.SgS.", /* ghosts around the snares */
-    "..S..S.S", /* space, then the snare pushing into the one */
-    "f.gS.gfK", /* flams, and a kick picking up the one */
-    "S.gSK.SK", /* the amen's turn, kick pickups */
-    "K.gS.gfS", /* a kick, then ghosts into a flam */
-    "g.SgS.Sr", /* a short 32nd pair at the very end */
+    /* 1 e & a 2 e & a 3 e & a 4 e & a */
+    "K.g.S..g" "S.gS.gS.", /* syncopated snares on the and and the a */
+    "K..gS.g." "K.S.KS.S", /* kick and snare answering each other */
+    "K.g.Sg.g" "gSg.SgS.", /* ghosts around the snares */
+    "K...S..g" "..S..S.S", /* space, then the snare pushing into the one */
+    "K.g.S.gg" "f.gS.gfK", /* flams, and a kick picking up the one */
+    "K..KS.g." "S.gSK.SK", /* the amen's turn, kick pickups */
+    "K.g.S.gS" "K.gS.gfS", /* a kick, then ghosts into a flam */
+    "Kg.gS..g" "g.SgS.Sr", /* a short 32nd pair at the very end */
 };
 #define NFILL ((int)(sizeof fill_shapes / sizeof fill_shapes[0]))
 const char *engine_fill_shape(int i) { return fill_shapes[clampi(i, 0, NFILL - 1)]; }
@@ -1035,9 +1037,7 @@ static void brk_fill_hit(int v, int tag, float vel, int flam, int pair)
 /* step s of a fill: its shape's hit, if any, on the snare or kick channel */
 static void fill_step(int s)
 {
-    int i = (s & 15) - 8;
-    if (i < 0 || i > 7)
-        return;
+    int i = s & 15;
     char ch = fill_shapes[clampi(live.fill_shape, 0, NFILL - 1)][i];
     int sv = live.fill_snare, kv = live.fill_kick >= 0 ? live.fill_kick : live.fill_snare;
     float h = groove_hash(sv, s & 15, 0x3c6ef372u ^ (unsigned)live.fill_shape); /* a drummer's unevenness */
@@ -1178,13 +1178,8 @@ int engine_fill(void)
         live.fill_to = 0;
         return -1;
     }
-    int n = next_step, bar = n & ~15, i = n & 15;
-    if (i <= 8)
-        live.fill_from = bar + 8, live.fill_to = bar + 16;
-    else if (i <= 14)
-        live.fill_from = n, live.fill_to = bar + 16;
-    else
-        live.fill_from = bar + 24, live.fill_to = bar + 32;
+    /* from the next 16th to the bar line: on the bar's last 16th, the next bar whole */
+    live.fill_from = next_step, live.fill_to = (next_step & ~15) + 16;
     static unsigned fills;
     int shape = (int)(groove_hash(0, 0, 0x9b05688cu + ++fills * 0x632be5abu) * NFILL);
     if (shape == live.fill_shape) /* never the same one twice running */
@@ -1976,6 +1971,7 @@ static int song_read(const char *path, Song *s)
     s->groove_ghost = (int8_t)clampi(s->groove_ghost, -100, 100);
     s->switch_div = (uint8_t)clampi(s->switch_div, 0, NSWITCH - 1);
     s->swing = (int8_t)clampi(s->swing, 0, 25);
+    s->midi_mode = (uint8_t)clampi(s->midi_mode, 0, NMIDIMODE - 1);
     s->breath = (int8_t)clampi(s->breath, 0, 100);
     for (int k = 0; k < NSCENE; k++) {
         s->scene_used[k] = s->scene_used[k] != 0;
@@ -1999,14 +1995,14 @@ int song_load(const char *path)
 }
 
 /* a song file switching in: everything but the device's own settings (the
- * output, the clock out and the Wi-Fi sync mode), which stay as they are */
+ * output, the clock out, the Wi-Fi sync and MIDI modes), which stay as they are */
 static void song_switch_in(const Song *in)
 {
     int sync_mode = song.sync_mode, out_mode = song.out_mode, clk_side = song.clk_side;
-    int clk_ppqn = song.clk_ppqn, clk_width = song.clk_width;
+    int clk_ppqn = song.clk_ppqn, clk_width = song.clk_width, midi_mode = song.midi_mode;
     song = *in;
     song.sync_mode = sync_mode, song.out_mode = out_mode, song.clk_side = clk_side;
-    song.clk_ppqn = clk_ppqn, song.clk_width = clk_width;
+    song.clk_ppqn = clk_ppqn, song.clk_width = clk_width, song.midi_mode = (uint8_t)midi_mode;
     song_clamp();
     for (int k = 0; k < NSCENE; k++)
         if (!song.scene_used[k])
