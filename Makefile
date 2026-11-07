@@ -26,8 +26,8 @@ SDL_INC := third_party/SDL2-2.30.9-headers
 SRC    := src/engine.c src/breaks.c src/ui.c src/gfx.c src/sync.c src/aclock.c
 HDR    := src/engine.h src/breaks.h src/ui.h src/gfx.h src/sync.h src/aclock.h src/font_data.h src/update.h
 NET    := src/net.c src/update.c # the self-updater, on the device and in build/cs_update
-PLAT   := src/midi.c src/leds.c src/perflog.c src/main_trimui.c
-PLATH  := src/midi.h src/net.h src/leds.h src/perflog.h
+PLAT   := src/midi.c src/link.c src/leds.c src/perflog.c src/main_trimui.c
+PLATH  := src/midi.h src/link.h src/net.h src/leds.h src/perflog.h
 CFLAGS := -O2 -std=gnu11 -Wall -Wextra -fno-math-errno
 APP    := dist/ColumbiaStreet
 SAMPLES := $(APP)/breaks/AMEN_153bpm.wav
@@ -103,9 +103,9 @@ build/brickpro/columbia: $(SRC) $(NET) $(PLAT) $(HDR) $(PLATH) build/version bui
 	@mkdir -p build/brickpro
 	$(DEVICE_CC) -DCS_BRICKPRO -o $@ $(SRC) $(NET) $(PLAT) $(DEVICE_LINK)
 
-build/cs_test: $(SRC) src/midi.c src/leds.c src/perflog.c src/main_test.c $(HDR) src/midi.h src/leds.h src/perflog.h build/version
+build/cs_test: $(SRC) src/midi.c src/link.c src/leds.c src/perflog.c src/main_test.c $(HDR) src/midi.h src/link.h src/leds.h src/perflog.h build/version
 	@mkdir -p build
-	cc $(CFLAGS) $(VERDEF) -o $@ $(SRC) src/midi.c src/leds.c src/perflog.c src/main_test.c -lm -lpthread
+	cc $(CFLAGS) $(VERDEF) -o $@ $(SRC) src/midi.c src/link.c src/leds.c src/perflog.c src/main_test.c -lm -lpthread
 
 test: build/cs_test $(SAMPLES)
 	@mkdir -p build/test

@@ -19,7 +19,10 @@ samples load on a thread while the loading screen keeps being presented. `make t
 The platform layer is `src/main_trimui.c` (SDL2: video scaled 1.6x from the 640x480 pages, the
 buttons of TrimUI OS's controller or MustardOS's "muOS-Keys" one, found at run time, USB audio
 with hot-plug, the sticks) and `src/midi.c` (USB MIDI clock in
-and out through ALSA raw MIDI). The engine, the pages and Wi-Fi sync are shared with the Miyoo
+and out through ALSA raw MIDI), with `src/link.c` (the clock link between Bricks: a follower's bottom
+port as a USB gadget through configfs and FunctionFS, found and driven by the leader through usbfs;
+`make test` checks its descriptors, the leader's search against a stand-in sysfs, and how tightly a
+follower holds the leader's position). The engine, the pages and Wi-Fi sync are shared with the Miyoo
 version; keep the engine the same sound as there (with the sticks at rest, `build/test/session.wav`
 matches the Miyoo harness's sample for sample).
 

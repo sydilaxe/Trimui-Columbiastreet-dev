@@ -104,8 +104,10 @@ typedef struct {
      * beat's dynamics and lean, engine_step_gain) */
     int8_t swing, breath;
     int8_t slot_feel[NSLOT][2];
-    /* v0.6: MIDI clock over USB (MIDI_*), the device's like the Wi-Fi sync mode */
-    uint8_t midi_mode;
+    /* v0.6: MIDI clock over USB (MIDI_*), the device's like the Wi-Fi sync mode;
+     * midi_clock_only: follow the clock's tempo (and over the Brick link, its
+     * bar) but not START, STOP, CONTINUE or song position */
+    uint8_t midi_mode, midi_clock_only;
 } Song;
 
 /* the MIDI clock: AUTO sends it and follows one that comes in, SEND always

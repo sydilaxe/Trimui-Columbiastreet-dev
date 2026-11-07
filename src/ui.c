@@ -12,6 +12,7 @@
 #include "breaks.h"
 #include "engine.h"
 #include "gfx.h"
+#include "link.h"
 #include "midi.h"
 #include "sync.h"
 #include "update.h"
@@ -653,6 +654,13 @@ static const char *const midi_mode_names[NMIDIMODE] = {"AUTO", "SEND", "FOLLOW",
 
 static void play_action(int b, int repeats)
 {
+    if (play_f == 3) { /* START: follow the clock's START / STOP, or the clock only */
+        if ((b == BTN_X || b == BTN_Y || b == BTN_A) && !repeats) {
+            song.midi_clock_only = !song.midi_clock_only;
+            say(song.midi_clock_only ? "START/STOP IGNORED: THE CLOCK ONLY" : "START/STOP FOLLOWED");
+        }
+        return;
+    }
     if (play_f == 2) { /* MIDI: which way the clock goes over USB */
         if ((b == BTN_X || b == BTN_Y || b == BTN_A) && !repeats) {
             song.midi_mode = (uint8_t)wrap(song.midi_mode + (b == BTN_Y ? -1 : 1), NMIDIMODE);
@@ -737,7 +745,7 @@ static void song_action(int b, int repeats)
         else if (song_cur == SG_GRV)
             grv_f = wrap(grv_f + d, 4);
         else if (song_cur == SG_PLAY)
-            play_f = wrap(play_f + d, 3);
+            play_f = wrap(play_f + d, 4);
         song_confirm = -1;
         return;
     }
@@ -1171,7 +1179,8 @@ static void draw_footer(void)
                : song_cur == SG_GRV   ? "<>:SETTING  X/Y:+/-  A:OFF"
                : play_f == 0          ? "<>:SETTING  X/Y:SWITCH ON"
                                       : play_f == 1 ? "<>:SETTING  X/Y:SONG  A:LOAD  B:SAVE"
-                                                    : "<>:SETTING  X/Y:MIDI CLOCK";
+                                                    : play_f == 2 ? "<>:SETTING  X/Y:MIDI CLOCK"
+                                                                  : "<>:SETTING  X/Y:FOLLOW / IGNORE START";
     gfx_fill(0, FOOTER_Y, SCREEN_W, SCREEN_H - FOOTER_Y, C_PANEL);
     gfx_text(10, FOOTER_Y + 3, hint, C_DIM, FONT_SMALL);
     if (groove_kept()) {
@@ -1547,16 +1556,27 @@ static void draw_song(void)
     /* when a slot or song switches in, and the song files */
     {
         int yy = y + 176, row = song_cur == SG_PLAY;
-        for (int k = 0; k < 3; k++) {
+        for (int k = 0; k < 4; k++) {
             int x = 8 + k * 157, w = 150, sel = row && play_f == k;
             int next = k == 1 && live.queued_song;
             gfx_fill(x, yy, w, 38, sel ? C_PANEL2 : C_PANEL);
             gfx_rect(x, yy, w, 38, sel ? 2 : 1, sel ? C_ACCENT : next ? C_ACCENT : C_LINE);
             char val[24];
-            if (k == 2) {
-                gfx_text(x + 10, yy + 8, "MIDI", sel ? C_TEXT : C_DIM, FONT_SMALL);
+            if (k == 3) {
+                gfx_text(x + 10, yy + 8, "START", sel ? C_TEXT : C_DIM, FONT_SMALL);
+                text_r(x + w - 10, yy + 8, song.midi_clock_only ? "IGNORE" : "FOLLOW",
+                       song.midi_clock_only ? C_ACCENT : C_TEXT, FONT_SMALL);
+            }
+            else if (k == 2) {
+                /* LINK while Bricks follow this one (or it follows one); the mode blue
+                 * while following a clock, green while sending one */
+                int links = midi_links(), lf = link_follow_state();
+                int in = midi_following(), out = live.playing && midi_ports() && !in &&
+                                                  (song.midi_mode == MIDI_AUTO || song.midi_mode == MIDI_SEND);
+                gfx_text(x + 10, yy + 8, links || lf == 2 ? "LINK" : "MIDI", sel ? C_TEXT : C_DIM, FONT_SMALL);
                 text_r(x + w - 10, yy + 8, midi_mode_names[clampi(song.midi_mode, 0, NMIDIMODE - 1)],
-                       song.midi_mode == MIDI_OFF ? C_DIM : C_TEXT, FONT_SMALL);
+                       in ? 0x46b4ff : out ? C_PLAY : song.midi_mode == MIDI_OFF || !midi_ports() ? C_DIM : C_TEXT,
+                       FONT_SMALL);
             }
             else if (k == 0) {
                 gfx_text(x + 10, yy + 8, "SWITCH", sel ? C_TEXT : C_DIM, FONT_SMALL);
@@ -1571,14 +1591,6 @@ static void draw_song(void)
                 text_r(x + w - 10, yy + 8, val, song_no == song_cur_no ? C_ACCENT : there ? C_TEXT : C_DIM, FONT_SMALL);
             }
         }
-        /* what the MIDI clock is doing now */
-        const char *st = !midi_ports()                                         ? "NO MIDI"
-                         : midi_following()                                    ? "CLOCK IN"
-                         : song.midi_mode == MIDI_OFF                          ? "NO CLOCK"
-                         : live.playing && song.midi_mode != MIDI_FOLLOW       ? "CLOCK OUT"
-                         : song.midi_mode == MIDI_FOLLOW                       ? "WAITING"
-                                                                               : "MIDI READY";
-        text_r(620, yy + 8, st, midi_following() ? 0x46b4ff : C_DIM, FONT_SMALL);
     }
 }
 

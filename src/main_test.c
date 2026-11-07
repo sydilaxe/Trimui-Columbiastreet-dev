@@ -18,6 +18,7 @@
 #include "engine.h"
 #include "gfx.h"
 #include "leds.h"
+#include "link.h"
 #include "midi.h"
 #include "perflog.h"
 #include "sync.h"
@@ -1828,6 +1829,202 @@ int main(int argc, char **argv)
                "(want 1: %d)\n",
                got[0][0], got[0][1], got[1][0], got[1][1], got[2][0], got[2][1], got[3][0], got[3][1], page,
                ok && page);
+    }
+    /* ---- the Brick clock link and MIDI clock-only (midi.c, link.c) */
+    {
+        static int16_t pcm[2048 * 2];
+        const uint8_t start = 0xfa, stop = 0xfc, tick = 0xf8;
+        /* clock only: START and STOP pass by, the tempo still follows */
+        song_default();
+        song.midi_clock_only = 1;
+        engine_init(RATE);
+        engine_set_playing(0);
+        midi_reset();
+        midi_set_latency(0.f);
+        uint64_t t = 1000000;
+        midi_feed(&start, 1, t);
+        int start_ignored = !live.playing;
+        for (int i = 0; i < 48; i++) {
+            t += 20833;
+            midi_feed(&tick, 1, t);
+            engine_render(pcm, 1000);
+        }
+        int tempo = midi_following() && fabsf(song.bpm - 120.f) < 0.2f;
+        engine_set_playing(1); /* started by hand */
+        midi_feed(&stop, 1, t);
+        int stop_ignored = live.playing;
+        engine_set_playing(0);
+
+        /* the link: a leader at 137.37 BPM sends where its sound is every 20 ms;
+         * this one, stopped, joins it mid-song and holds it */
+        static const double tempos[] = {137.37, 200.0, 224.5, 250.0};
+        double worst_ms_at[4], worst_ms = 0.0, bpm = 0.0, lat = 512.0 / RATE, lead0 = 37.25;
+        int joined = 1, exact_tempo = 1;
+        uint8_t msg[16];
+        for (int k = 0; k < 4; k++) {
+            bpm = tempos[k];
+            song_default();
+            song.midi_clock_only = 0;
+            engine_init(RATE);
+            engine_set_playing(0);
+            midi_reset();
+            midi_set_latency((float)lat);
+            t = 5000000;
+            double worst = 0.0;
+            for (int i = 0; i < 400; i++) { /* 8 s */
+                double lead = lead0 + (double)(t - 5000000) * 1e-6 * bpm / 15.0;
+                /* after a few seconds, how far this one's sound is from the leader's, now */
+                if (i > 150) {
+                    double heard = engine_position() - lat * song.bpm / 15.0;
+                    double e = fabs(lead - heard);
+                    worst = e > worst ? e : worst;
+                }
+                int n = midi_link_pos(msg, sizeof msg, lead, bpm, 1);
+                /* it arrives 0.15 to 0.45 ms after it was sent (USB through the hub and
+                 * the thread waking), at random, while this one plays on */
+                int late = (int)(0.00015 * RATE) + rand() % (int)(0.0003 * RATE + 1);
+                engine_render(pcm, late);
+                midi_feed(msg, n, t + (uint64_t)late * 1000000 / RATE);
+                if (i == 0)
+                    joined &= live.playing;
+                engine_render(pcm, RATE / 50 - late);
+                t += 20000;
+            }
+            worst_ms_at[k] = worst * 15000.0 / bpm;
+            worst_ms = fmax(worst_ms, worst_ms_at[k]);
+            exact_tempo &= fabs(song.bpm - bpm) < 0.001;
+        }
+        /* the leader stops: so does this one */
+        int n = midi_link_pos(msg, sizeof msg, 0.0, bpm, 0);
+        midi_feed(msg, n, t);
+        int stops = !live.playing;
+
+        /* clock only over the link: started by hand somewhere else, it lines up the bar */
+        song.midi_clock_only = 1;
+        midi_reset();
+        engine_init(RATE);
+        engine_set_playing(0);
+        engine_set_playing(1);
+        engine_set_position(5.3);
+        double bar_err = 99.0;
+        for (int i = 0; i < 150; i++) {
+            double lead = lead0 + (double)(t - 5000000) * 1e-6 * bpm / 15.0;
+            n = midi_link_pos(msg, sizeof msg, lead, bpm, 1);
+            midi_feed(msg, n, t);
+            engine_render(pcm, RATE / 50);
+            t += 20000;
+            if (i == 149) {
+                double heard = engine_position() - lat * song.bpm / 15.0;
+                double d = lead + (20000 * 1e-6 + 0.0003) * bpm / 15.0 - heard;
+                bar_err = fabs(d - 16.0 * floor((d + 8.0) / 16.0));
+            }
+        }
+        n = midi_link_pos(msg, sizeof msg, 0.0, bpm, 0);
+        midi_feed(msg, n, t);
+        int no_stop = live.playing; /* the clock only: the leader stopping doesn't stop it */
+        engine_set_playing(0);
+        song.midi_clock_only = 0;
+
+        /* a Brick following another clock passes it on to the ones linked to it */
+        midi_reset();
+        midi_set_latency(0.f);
+        engine_init(RATE);
+        t = 9000000;
+        midi_feed(&start, 1, t);
+        for (int i = 0; i < 48; i++) {
+            t += 20833;
+            midi_feed(&tick, 1, t);
+            engine_render(pcm, 1000);
+        }
+        n = midi_link_step(t + 1, msg, sizeof msg);
+        int relays = midi_following() && n == 14 && msg[0] == 0xf0 && msg[1] == 0x7d && msg[13] == 0xf7;
+        midi_feed(&stop, 1, t);
+        midi_reset();
+
+        /* the follower's USB descriptors, and the leader finding a linked Brick
+         * in a stand-in sysfs: not the test memory stick with the same ids */
+        uint8_t d[256];
+        int dn = link_descriptors(d, sizeof d), sn = link_strings(d + 128, 128);
+        /* the head (12 bytes) and the full- and high-speed counts (8), then the
+         * interface (9) and its bulk OUT endpoint (7), for each speed */
+        int desc = dn == 52 && d[0] == 3 && d[20 + 5] == 0xff && d[20 + 6] == LINK_SUBCLASS &&
+                   d[20 + 7] == LINK_PROTOCOL && d[29 + 2] == 0x01 && d[29 + 3] == 2 && d[45 + 4] == 0 &&
+                   d[45 + 5] == 2 && sn > 16;
+        char fs[600], fp[800];
+        snprintf(fs, sizeof fs, "%s/fakeusb", out);
+        mkdir(fs, 0755);
+        const char *const tree[][2] = {
+            {"1-1.3/idVendor", "1d6b"},           {"1-1.3/idProduct", "0104"},
+            {"1-1.3/busnum", "1"},                {"1-1.3/devnum", "5"},
+            {"1-1.3/1-1.3:1.0/bInterfaceClass", "ff"}, {"1-1.3/1-1.3:1.0/bInterfaceSubClass", "42"},
+            {"1-1.3/1-1.3:1.0/bInterfaceProtocol", "4c"}, {"1-1.3/1-1.3:1.0/ep_02/direction", "out"},
+            {"1-1.3/1-1.3:1.0/ep_02/type", "Bulk"}, {"1-1.3/1-1.3:1.0/ep_02/bEndpointAddress", "02"},
+            {"1-1.4/idVendor", "1d6b"},           {"1-1.4/idProduct", "0104"},
+            {"1-1.4/busnum", "1"},                {"1-1.4/devnum", "6"},
+            {"1-1.4/1-1.4:1.0/bInterfaceClass", "08"},
+        };
+        for (size_t k = 0; k < sizeof tree / sizeof tree[0]; k++) {
+            snprintf(fp, sizeof fp, "%s/%s", fs, tree[k][0]);
+            for (char *c = fp + strlen(fs) + 1; *c; c++)
+                if (*c == '/') {
+                    *c = 0;
+                    mkdir(fp, 0755);
+                    *c = '/';
+                }
+            FILE *f = fopen(fp, "w");
+            if (f) {
+                fprintf(f, "%s\n", tree[k][1]);
+                fclose(f);
+            }
+        }
+        LinkDev ld[4];
+        int found = link_find(fs, ld, 4);
+        int finds = found == 1 && ld[0].bus == 1 && ld[0].dev == 5 && ld[0].ep == 0x02;
+        /* plain MIDI clock from outside gear at 250 BPM (a tick every 10 ms): how close the ticks alone hold it */
+        song_default();
+        engine_init(RATE);
+        engine_set_playing(0);
+        midi_reset();
+        midi_set_latency(0.f);
+        t = 20000000;
+        midi_feed(&start, 1, t);
+        engine_render(pcm, 64);
+        /* each tick arrives 0 to 2 ms late at random (USB, the thread waking) while this one plays on;
+         * how much its sound wobbles around its average offset (that average is the cable's own delay) */
+        static double tk_err[24 * 8];
+        int ne = 0;
+        for (int i = 1; i <= 24 * 32; i++) {
+            int late = rand() % (int)(0.002 * RATE + 1);
+            engine_render(pcm, late);
+            midi_feed(&tick, 1, t + 10000 + (uint64_t)late * 1000000 / RATE);
+            engine_render(pcm, RATE / 100 - late);
+            t += 10000;
+            if (i > 24 * 24 && ne < 24 * 8)
+                tk_err[ne++] = engine_position() - i / 6.0;
+        }
+        midi_feed(&stop, 1, t);
+        midi_reset();
+        double mean = 0.0, wob = 0.0;
+        for (int k = 0; k < ne; k++)
+            mean += tk_err[k] / ne;
+        for (int k = 0; k < ne; k++)
+            wob = fmax(wob, fabs(tk_err[k] - mean));
+        double tick_ms = wob * 15000.0 / 250.0;
+        printf("midi clock in at 250 BPM: the tempo %.1f, the sound within %.3f ms of steady, ticks up to 2 ms late "
+               "(want under 0.5: %d)\n",
+               song.bpm, tick_ms, tick_ms < 0.5);
+        printf("clock only: START ignored %d, STOP ignored %d, the tempo followed %d (want 1: %d)\n", start_ignored,
+               stop_ignored, tempo, start_ignored && stop_ignored && tempo);
+        printf("link sync: joins mid-song %d, the exact tempo %d, the sound within %.3f / %.3f / %.3f / %.3f ms of the "
+               "leader's at 137.37 / 200 / 224.5 / 250 BPM (want under 0.25: %d), stops with it %d; clock only: the bar within %.3f steps %d, keeps playing %d; "
+               "a follower passes the clock on %d (want 1: %d)\n",
+               joined, exact_tempo, worst_ms_at[0], worst_ms_at[1], worst_ms_at[2], worst_ms_at[3], worst_ms < 0.25,
+               stops, bar_err, bar_err < 0.01, no_stop, relays,
+               joined && exact_tempo && worst_ms < 0.25 && stops && bar_err < 0.01 && no_stop && relays);
+        printf("link usb: descriptors %d (%d bytes), strings %d, a linked Brick found %d (bus %d device %d endpoint "
+               "0x%02x), the memory stick passed over %d (want 1: %d)\n",
+               desc, dn, sn > 16, finds, found ? ld[0].bus : 0, found ? ld[0].dev : 0, found ? ld[0].ep : 0,
+               found == 1, desc && finds);
     }
     breaks_free();
     return 0;

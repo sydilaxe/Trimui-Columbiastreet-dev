@@ -1972,6 +1972,7 @@ static int song_read(const char *path, Song *s)
     s->switch_div = (uint8_t)clampi(s->switch_div, 0, NSWITCH - 1);
     s->swing = (int8_t)clampi(s->swing, 0, 25);
     s->midi_mode = (uint8_t)clampi(s->midi_mode, 0, NMIDIMODE - 1);
+    s->midi_clock_only = s->midi_clock_only != 0;
     s->breath = (int8_t)clampi(s->breath, 0, 100);
     for (int k = 0; k < NSCENE; k++) {
         s->scene_used[k] = s->scene_used[k] != 0;
@@ -2000,9 +2001,11 @@ static void song_switch_in(const Song *in)
 {
     int sync_mode = song.sync_mode, out_mode = song.out_mode, clk_side = song.clk_side;
     int clk_ppqn = song.clk_ppqn, clk_width = song.clk_width, midi_mode = song.midi_mode;
+    int clock_only = song.midi_clock_only;
     song = *in;
     song.sync_mode = sync_mode, song.out_mode = out_mode, song.clk_side = clk_side;
     song.clk_ppqn = clk_ppqn, song.clk_width = clk_width, song.midi_mode = (uint8_t)midi_mode;
+    song.midi_clock_only = (uint8_t)clock_only;
     song_clamp();
     for (int k = 0; k < NSCENE; k++)
         if (!song.scene_used[k])

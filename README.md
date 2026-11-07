@@ -241,7 +241,7 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
 - **SONG**: pattern slots A-J. A loads a slot (at the next SWITCH while playing), X saves the
   pattern into it, with its kept groove (a G marks the slot), R2+Y clears it. Below them are the
   TEMPO and the Wi-Fi SYNC mode (one row), the output row (OUTPUT, CLOCK ON, PPQN, PULSE), the GROOVE row and the last row,
-  SWITCH, SONG and MIDI: left / right picks a setting, X / Y changes it.
+  SWITCH, SONG, MIDI and START: left / right picks a setting, X / Y changes it.
   - **GROOVE** is the groove kept with the pattern (see [the groove](#the-groove)): LOCK (B toward the
     breakbeats, C the clave), GHOSTS (> after the hits, < before, how many), SWING (50% straight to
     75%) and BREATH (the beat's dynamics and lean). X / Y change one, faster held; A turns it off.
@@ -344,6 +344,29 @@ check what the system itself does with the switch (its FN switch setting), as it
 MustardOS reads the same pin on the Brick and the Brick Pro (its input daemon passes it on as a
 switch on the muOS-Keys controller) but does nothing with it, so nothing else happens when you flip it.
 
+## Linking Bricks over USB
+
+Several Bricks can play in time with one, by cable, with no MIDI interface between them: the
+**leader** has a USB hub in its **top** port, and each **follower** plugs its **bottom** (charging)
+port into the same hub, with a data cable. The wiring decides who leads, and any number of Bricks
+can follow one (up to eight MIDI devices and Bricks on the leader together). Use a **powered hub**:
+each follower charges from it.
+
+Nothing to set up: when Columbia Street starts it offers its bottom port as a "TrimUI clock link"
+(TrimUI's kernel has no USB MIDI gadget, so the link is the apps' own), and a leader finds the
+Bricks on its hub within a second and sends them its clock with START and STOP, as to MIDI gear,
+plus where its sound is about 50 times a second. Each follower moves its own sound onto that,
+measured by its audio clock, so they sound together within a tenth of a millisecond, at any tempo
+up to 250 BPM. A follower plugged in mid-song comes in at the leader's place. The leader can still
+use USB audio and MIDI gear on the same hub, and its sound is what the followers line up with,
+through whichever output it plays. A leader that itself follows a drum machine's MIDI clock
+passes it on, so the whole chain follows the drum machine.
+
+On the SONG page the MIDI setting's label reads LINK while Bricks are linked; its value is blue
+while following and green while sending. Set START to IGNORE on a follower to start and stop it
+yourself: it keeps the leader's tempo and lines up with its bar as soon as it plays.
+`CS_LINK=0` in `launch.sh` leaves the bottom port alone.
+
 ## USB: MIDI clock and audio
 
 The Brick has two USB-C ports: the top one is the USB host port, the bottom one charges. Plug
@@ -357,12 +380,16 @@ on a hub.
 - **MIDI on the SONG page:** the last row's MIDI setting picks which way the clock goes. **AUTO**
   (the default) sends it, and follows a clock that comes in instead; **SEND** always sends it and
   ignores one coming in; **FOLLOW** only follows; **OFF** neither (notes and CCs still come in).
-  Beside it: NO MIDI with nothing plugged in, CLOCK IN while following, CLOCK OUT while sending.
-  It belongs to the unit, like the Wi-Fi sync mode: loading a song keeps it.
+  Its value is blue while following a clock and green while sending one, dim with no MIDI plugged
+  in. It belongs to the unit, like the Wi-Fi sync mode: loading a song keeps it.
+- **START on the SONG page:** FOLLOW (the default) starts, stops and places the sequencer with the
+  clock's START, STOP, CONTINUE and song position; **IGNORE** follows the clock's tempo only, so you
+  start and stop it yourself (from a linked Brick it still lines up with the leader's bar).
 - **MIDI clock out:** while the sequencer plays and no clock is coming in (AUTO), or always (SEND),
   Columbia Street sends clock (24 a quarter note), START and STOP to every MIDI port. The clock is timed to the sound as
   it is heard, so a drum machine or synth lands on the beat.
-- **MIDI clock in** (AUTO or FOLLOW): the tempo follows it, and its phase is held by trimming the playback speed, as
+- **MIDI clock in** (AUTO or FOLLOW): the tempo follows it (a straight line through the last four
+  beats of ticks, so USB's jitter averages out: within a tenth of a millisecond at 250 BPM), and its phase is held by trimming the playback speed, as
   Wi-Fi sync does. START plays from the first step, CONTINUE and song position pick up where they
   say, STOP stops.
 - **MIDI notes:** channels 1-4 play breaks 1-4's slices (note 36, C1, is the first slice, each note
