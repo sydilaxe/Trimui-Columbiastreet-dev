@@ -259,6 +259,39 @@ void ui_fill(void)
     ui_unlock();
 }
 
+/* the Brick Pro's R3: the fill, or with R2 held every break channel's
+ * LENGTH at 20% (short, choked slices), and the next R2 + R3 back to the
+ * lengths they had; a channel whose LENGTH has changed since (by hand, or a
+ * slot or song switching in) keeps the one it has now */
+#define SHORT_LEN 20
+static int short_on, short_was[NBRK];
+void ui_r3(void)
+{
+    if (upd_open)
+        return;
+    ui_lock();
+    if (held[BTN_R2]) {
+        if (!short_on) {
+            for (int v = 0; v < NBRK; v++) {
+                short_was[v] = song.pat.param[v][B_LEN];
+                param_set(v, B_LEN, SHORT_LEN);
+            }
+            say("ALL BREAKS  LENGTH %d%%  (R2+R3 AGAIN: BACK)", SHORT_LEN);
+        }
+        else {
+            for (int v = 0; v < NBRK; v++)
+                if (song.pat.param[v][B_LEN] == SHORT_LEN)
+                    param_set(v, B_LEN, short_was[v]);
+            say("ALL BREAKS  LENGTH BACK");
+        }
+        short_on = !short_on;
+        changed = 1;
+    }
+    else
+        fill_toggle();
+    ui_unlock();
+}
+
 void ui_init(void)
 {
     for (int v = 0; v < NV; v++)

@@ -1725,6 +1725,52 @@ int main(int argc, char **argv)
                swing_ok, flat, shape, lean, lean_ok, row_swing, row_breath, slot, cleared,
                swing_ok && flat && shape && lean_ok && row_swing && row_breath && slot && cleared);
     }
+    /* ---- R2 + R3 (the Brick Pro): every break channel's LENGTH to 20%, the
+     * bass untouched, no fill; R3 alone still plays the fill */
+    {
+        static float b2[64];
+        song_default();
+        engine_init(RATE);
+        int bass_len = song.pat.param[V_BASS][S_LEN];
+        engine_set_playing(0);
+        engine_set_playing(1);
+        live.step = 0;
+        while (live.step < 2)
+            render_mono(b2, 64);
+        ui_button(BTN_R2, 1);
+        ui_r3();
+        ui_button(BTN_R2, 0);
+        int all = 1;
+        for (int v = 0; v < NBRK; v++)
+            all &= song.pat.param[v][B_LEN] == 20;
+        int bass = song.pat.param[V_BASS][S_LEN] == bass_len, no_fill = live.fill_to == 0;
+        ui_r3();
+        int fill = live.fill_to > 0;
+        engine_set_playing(0);
+        ui_button(BTN_R2, 1);
+        ui_r3(); /* back, so the next press shortens */
+        ui_button(BTN_R2, 0);
+        /* again: back to how they were, but a length changed in between stays */
+        int was[NBRK];
+        song_default();
+        for (int v = 0; v < NBRK; v++)
+            song.pat.param[v][B_LEN] = was[v] = 50 + 10 * v;
+        ui_button(BTN_R2, 1);
+        ui_r3();
+        song.pat.param[2][B_LEN] = 70; /* changed by hand meanwhile */
+        ui_r3();
+        ui_button(BTN_R2, 0);
+        int back = song.pat.param[0][B_LEN] == was[0] && song.pat.param[1][B_LEN] == was[1] &&
+                   song.pat.param[2][B_LEN] == 70 && song.pat.param[3][B_LEN] == was[3];
+        ui_button(BTN_R2, 1);
+        ui_r3();
+        int again = song.pat.param[0][B_LEN] == 20; /* and the next press shortens again */
+        ui_r3();
+        ui_button(BTN_R2, 0);
+        printf("r2+r3: every break channel's length 20%% %d, the bass untouched %d, no fill %d; R3 alone fills %d; "
+               "again back to how they were %d (one changed meanwhile kept), then short again %d (want 1: %d)\n",
+               all, bass, no_fill, fill, back, again, all && bass && no_fill && fill && back && again);
+    }
     breaks_free();
     return 0;
 }
