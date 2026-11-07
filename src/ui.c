@@ -259,6 +259,25 @@ void ui_fill(void)
     ui_unlock();
 }
 
+/* the Brick Pro's R3: the fill, or with R2 held every break channel's
+ * LENGTH at 20% (short, choked slices), kept in the pattern as LENGTH is */
+#define SHORT_LEN 20
+void ui_r3(void)
+{
+    if (upd_open)
+        return;
+    ui_lock();
+    if (held[BTN_R2]) {
+        for (int v = 0; v < NBRK; v++)
+            param_set(v, B_LEN, SHORT_LEN);
+        say("ALL BREAKS  LENGTH %d%%", SHORT_LEN);
+        changed = 1;
+    }
+    else
+        fill_toggle();
+    ui_unlock();
+}
+
 void ui_init(void)
 {
     for (int v = 0; v < NV; v++)
