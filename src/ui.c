@@ -46,6 +46,7 @@ static int pat_v, pat_r, chop_v, chop_p, bass_p, mix_v, mix_r, song_cur;
 /* the CHOP page's SET stop (chop_p -1, above the params): the set of breaks
  * X / Y has picked, which A loads; -1 until the stop is first reached */
 static int set_pick = -1;
+static int song_pending = -1; /* the song waiting for its set to load */
 static int held[BTN_COUNT], hold_ms[BTN_COUNT], rep_ms[BTN_COUNT], rep_n[BTN_COUNT];
 static int b_used; /* B was a modifier this press (PATTERN page) */
 static int fx_order[4], fx_norder;
@@ -566,8 +567,10 @@ static void set_action(int b, int repeats)
         say("STILL LOADING SET %.24s", breaks_set_name(breaks_switch_target()));
     else if (set_pick == breaks_set_current())
         say("SET %.24s IS IN", breaks_set_name(set_pick));
-    else if (breaks_switch_start(set_pick))
+    else if (breaks_switch_start(set_pick)) {
+        song_pending = -1;
         say("LOADING SET %.24s...", breaks_set_name(set_pick));
+    }
 }
 
 static void chop_action(int b, int repeats)
@@ -691,6 +694,65 @@ static void grv_action(int b, int repeats)
  * a second B to save over one) */
 static const char *const midi_mode_names[NMIDIMODE] = {"AUTO", "SEND", "FOLLOW", "OFF"};
 
+/* Song n in: first its set of breaks, when it was saved with another one and
+ * that set is here (the song comes in once the set has, from set_poll, as its
+ * breaks are found by name in it); a set that isn't here leaves the one in */
+
+static void song_in(int n, const char *note)
+{
+    char p[512];
+    song_path(n, p, sizeof p);
+    if (!song_file_load(p)) { /* there, but it won't read: say why (the log has more) */
+        say("SONG %d WON'T LOAD: %s", n + 1, song_error());
+        return;
+    }
+    song_cur_no = n;
+    if (live.playing)
+        say("SONG %d AT THE NEXT %s%s", n + 1, switch_name(song.switch_div), note);
+    else
+        say("LOADED SONG %d%s", n + 1, note);
+}
+
+static void song_open(int n)
+{
+    char p[512], want[SET_NAME];
+    song_path(n, p, sizeof p);
+    if (!song_file_set(p, want, sizeof want)) {
+        say("SONG %d WON'T LOAD: %s", n + 1, song_error());
+        return;
+    }
+    int si = want[0] ? breaks_find_set(want) : -1;
+    if (!want[0] || si == breaks_set_current()) {
+        song_in(n, "");
+        return;
+    }
+    if (si < 0) {
+        char note[48];
+        snprintf(note, sizeof note, " (NO SET %.12s)", want);
+        song_in(n, note);
+        return;
+    }
+    if (breaks_switch_state() != SWITCH_IDLE) {
+        say("STILL LOADING SET %.24s", breaks_set_name(breaks_switch_target()));
+        return;
+    }
+    if (breaks_switch_start(si)) {
+        song_pending = n;
+        set_pick = si;
+        say("SONG %d: LOADING SET %.20s...", n + 1, want);
+    }
+}
+
+int ui_song_open(int n)
+{
+    if (n < 0 || n >= NSONG)
+        return 0;
+    ui_lock();
+    song_open(n);
+    ui_unlock();
+    return 1;
+}
+
 static void play_action(int b, int repeats)
 {
     if (play_f == 3) { /* START: follow the clock's START / STOP, or the clock only */
@@ -731,15 +793,7 @@ static void play_action(int b, int repeats)
             say("SONG %d IS EMPTY", song_no + 1);
             break;
         }
-        if (!song_file_load(p)) { /* there, but it won't read: say why (the log has more) */
-            say("SONG %d WON'T LOAD: %s", song_no + 1, song_error());
-            break;
-        }
-        song_cur_no = song_no;
-        if (live.playing)
-            say("SONG %d AT THE NEXT %s", song_no + 1, switch_name(song.switch_div));
-        else
-            say("LOADED SONG %d", song_no + 1);
+        song_open(song_no);
         break;
     case BTN_B:
         if (repeats)
@@ -1067,12 +1121,17 @@ static void set_poll(void)
     int r = breaks_switch_commit();
     if (r > 0)
         engine_banks_changed();
-    ui_unlock();
-    breaks_switch_cleanup();
     if (r > 0)
         say("SET %.24s: %d BREAKS", breaks_set_name(breaks_set_current()), nbanks);
     else
         say("NO BREAKS WOULD LOAD FROM THAT SET");
+    if (song_pending >= 0) { /* the song that asked for the set: in now (or on the set in, if it failed) */
+        int n = song_pending;
+        song_pending = -1;
+        song_in(n, r > 0 ? "" : " (ITS SET WOULDN'T LOAD)");
+    }
+    ui_unlock();
+    breaks_switch_cleanup();
     changed = 1;
 }
 

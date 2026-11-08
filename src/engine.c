@@ -1912,6 +1912,17 @@ static void song_fail(const char *what, const char *path, int err)
     fprintf(stderr, "song: couldn't %s %s: %s\n", what, path, err == EINVAL ? "not a song file, or a damaged one" : strerror(err));
 }
 
+static int song_read(const char *path, Song *s);
+
+int song_file_set(const char *path, char *out, int n)
+{
+    static Song s;
+    if (!song_read(path, &s))
+        return 0;
+    snprintf(out, n, "%s", s.break_set);
+    return 1;
+}
+
 int song_folder_ready(const char *dir)
 {
     struct stat st;
@@ -1946,6 +1957,9 @@ static int song_write(const char *path, const Song *src)
         names_of(song_slot(&out, i), &nm[1 + i]);
     out.magic = SONG_MAGIC;
     out.size = sizeof out;
+    /* the set of breaks in now, which the song's bank names belong to */
+    snprintf(out.break_set, sizeof out.break_set, "%s",
+             breaks_set_current() >= 0 ? breaks_set_name(breaks_set_current()) : "");
     int ok = fwrite(&out, sizeof out, 1, f) == 1 && fwrite(nm, sizeof nm, 1, f) == 1, err = ok ? 0 : errno;
     if (fclose(f) != 0 && ok)
         ok = 0, err = errno;
@@ -1997,6 +2011,7 @@ static int song_read(const char *path, Song *s)
     if (hdr[1] <= offsetof(Song, switch_div)) /* before v0.5: slots switched at the bar */
         s->switch_div = SW_BAR;
     s->size = sizeof *s;
+    s->break_set[sizeof s->break_set - 1] = 0;
     if (!(s->bpm >= 40.f && s->bpm <= 250.f))
         s->bpm = 170.f;
     resolve(&s->pat, &nm[0]);
