@@ -1,6 +1,7 @@
 #include "engine.h"
 
 #include <errno.h>
+#include <sys/stat.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1906,8 +1907,24 @@ static void song_fail(const char *what, const char *path, int err)
              : err == ENOENT ? "NO SUCH FILE"
              : err == EINVAL ? "NOT A SONG FILE"
              : err == EIO    ? "THE SD CARD HAD AN ERROR"
+             : err == ENOTDIR || err == EEXIST ? "A FILE IS IN THE WAY"
                              : "FILE ERROR");
     fprintf(stderr, "song: couldn't %s %s: %s\n", what, path, err == EINVAL ? "not a song file, or a damaged one" : strerror(err));
+}
+
+int song_folder_ready(const char *dir)
+{
+    struct stat st;
+    if (stat(dir, &st) == 0) {
+        if (S_ISDIR(st.st_mode))
+            return 1;
+        song_fail("make the folder", dir, ENOTDIR);
+        return 0;
+    }
+    if (mkdir(dir, 0755) == 0)
+        return 1;
+    song_fail("make the folder", dir, errno);
+    return 0;
 }
 
 static int song_write(const char *path, const Song *src)

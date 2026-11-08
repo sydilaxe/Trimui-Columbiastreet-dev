@@ -2066,11 +2066,21 @@ int main(int argc, char **argv)
         snprintf(p, sizeof p, "%s/missing.sav", out);
         int missing_fails = !song_load(p);
         int untouched = !memcmp(&keep, &song, sizeof song);
+        char why_missing[48];
+        snprintf(why_missing, sizeof why_missing, "%s", song_error());
+        /* the songs folder: made when it's missing, and the reason when it can't be */
+        snprintf(p, sizeof p, "%s/songs_made", out);
+        rmdir(p);
+        int made = song_folder_ready(p) && song_folder_ready(p);
+        snprintf(p, sizeof p, "%s/junk.sav/songs", out);
+        int blocked = !song_folder_ready(p) && !strcmp(song_error(), "A FILE IS IN THE WAY");
+        snprintf(p, sizeof p, "%s/junk.sav", out);
+        blocked &= !song_folder_ready(p) && !strcmp(song_error(), "A FILE IS IN THE WAY");
         int ok = save_fails && !strcmp(why_save, "NO SUCH FILE") && load_fails && !strcmp(why_load, "NOT A SONG FILE") &&
-                 missing_fails && !strcmp(song_error(), "NO SUCH FILE") && untouched;
+                 missing_fails && !strcmp(why_missing, "NO SUCH FILE") && untouched && made && blocked;
         printf("save errors: save into a missing folder fails %d (%s), a junk file %d (%s), a missing one %d (%s), the song "
-               "untouched %d (want 1: %d)\n",
-               save_fails, why_save, load_fails, why_load, missing_fails, song_error(), untouched, ok);
+               "untouched %d; the songs folder made %d, a file in its way said %d (want 1: %d)\n",
+               save_fails, why_save, load_fails, why_load, missing_fails, why_missing, untouched, made, blocked, ok);
     }
 
     /* ---- sets of breaks: each folder in breaks/ is one, loose files one more;

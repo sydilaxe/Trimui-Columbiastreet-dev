@@ -227,4 +227,7 @@ int song_file_load(const char *path);
 /* why the last save or load failed, in capitals for the screen ("THE SD CARD IS FULL");
  * the details go to the log */
 const char *song_error(void);
+/* the folder for the song files, made if it isn't there; 0 (and song_error says
+ * why: THE SD CARD IS READ-ONLY...) if it can't be */
+int song_folder_ready(const char *dir);
 void slot_clear(int i);

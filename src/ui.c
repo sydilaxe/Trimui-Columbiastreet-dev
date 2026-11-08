@@ -750,8 +750,7 @@ static void play_action(int b, int repeats)
             break;
         }
         song_confirm = -1;
-        mkdir(song_dir, 0755);
-        if (song_file_save(p, ui_full_bpm())) {
+        if (song_folder_ready(song_dir) && song_file_save(p, ui_full_bpm())) {
             songs_there |= 1u << song_no;
             song_cur_no = song_no;
             say("SAVED SONG %d", song_no + 1);
