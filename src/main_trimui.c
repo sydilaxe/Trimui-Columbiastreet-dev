@@ -19,6 +19,7 @@
 #include <strings.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
+#include <sys/statvfs.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -518,15 +519,45 @@ static void switch_poll(void)
 #endif
 }
 
-/* the song is saved at its full tempo, half time or not */
+/* the song is saved at its full tempo, half time or not; a failure is shown
+ * once (until a save works again) and logged each time */
 static void save_song(void)
 {
+    static int warned;
     ui_lock();
     float bpm = song.bpm;
     song.bpm = ui_full_bpm();
-    song_save(SAVE_PATH);
+    int ok = song_save(SAVE_PATH);
     song.bpm = bpm;
     ui_unlock();
+    if (ok)
+        warned = 0;
+    else if (!warned) {
+        warned = 1;
+        char msg[80];
+        snprintf(msg, sizeof msg, "NOT SAVING: %s", song_error());
+        ui_notice(msg);
+    }
+}
+
+/* where the song and the song files live, and whether they can be written there */
+static void log_save_place(void)
+{
+    char cwd[512];
+    if (!getcwd(cwd, sizeof cwd))
+        snprintf(cwd, sizeof cwd, "?");
+    struct statvfs vf;
+    long long free_mb = statvfs(".", &vf) == 0 ? (long long)vf.f_bavail * vf.f_frsize / (1024 * 1024) : -1;
+    int songs = 0;
+    for (int n = 1; n <= NSONG; n++) {
+        char p[64];
+        snprintf(p, sizeof p, "songs/song%02d.sav", n);
+        songs += access(p, F_OK) == 0;
+    }
+    fprintf(stderr, "saves: in %s, %lld MB free, the folder %s, %s %s, %d song files in songs/%s\n", cwd, free_mb,
+            access(".", W_OK) == 0 ? "writable" : "NOT writable", SAVE_PATH,
+            access(SAVE_PATH, F_OK) == 0 ? "there" : "not there", songs,
+            access("songs", F_OK) == 0 && access("songs", W_OK) != 0 ? " (NOT writable)" : "");
 }
 
 static void open_joysticks(void)
@@ -882,8 +913,14 @@ int main(int argc, char **argv)
     }
     fprintf(stderr, "%d break banks, %d bass samples\n", nb, ns);
     song_default();
+    log_save_place();
     if (song_load(SAVE_PATH))
         fprintf(stderr, "restored %s\n", SAVE_PATH);
+    else if (access(SAVE_PATH, F_OK) == 0) {
+        char msg[80];
+        snprintf(msg, sizeof msg, "LAST SONG WON'T LOAD: %s", song_error());
+        ui_notice(msg);
+    }
 
     joy_map_default();
     open_joysticks();

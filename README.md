@@ -455,6 +455,9 @@ Two files in the app folder tell you how Columbia Street runs on your device:
   peak, page faults, free memory, how often the audio thread was preempted). **JUMP** lines mark each click the
   app's own output made, with its time; a click heard with no JUMP and no dropout comes from the sound server.
   **HINT** lines say what to change, and an **END** line sums up the session.
+  At start-up a **saves:** line says where the song and the song files are kept, how much room the SD card has
+  and whether the folder can be written; a save or load that fails logs a **song:** line with the reason, and the
+  screen says it too (THE SD CARD IS FULL, THE SD CARD IS READ-ONLY, NOT A SONG FILE...).
 - **`sysinfo.txt`**, written by `sysinfo.sh` from `launch.sh`: the system and its sound path (PipeWire's devices,
   rate and quantum, the mixer), then every 10 seconds the load, clock, temperature, busiest processes and
   PipeWire's nodes with their **ERR** (xrun) counts.

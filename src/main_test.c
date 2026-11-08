@@ -2045,6 +2045,34 @@ int main(int argc, char **argv)
                desc, dn, sn > 16, finds, found ? ld[0].bus : 0, found ? ld[0].dev : 0, found ? ld[0].ep : 0,
                found == 1, desc && finds);
     }
+    /* ---- a save or load that fails says why */
+    {
+        fflush(stdout); /* the failures are logged on stderr */
+        char p[700];
+        snprintf(p, sizeof p, "%s/no_such_folder/x.sav", out);
+        int save_fails = !song_save(p);
+        char why_save[48];
+        snprintf(why_save, sizeof why_save, "%s", song_error());
+        snprintf(p, sizeof p, "%s/junk.sav", out);
+        FILE *jf = fopen(p, "wb");
+        if (jf) {
+            fputs("this is not a song", jf);
+            fclose(jf);
+        }
+        Song keep = song;
+        int load_fails = !song_load(p);
+        char why_load[48];
+        snprintf(why_load, sizeof why_load, "%s", song_error());
+        snprintf(p, sizeof p, "%s/missing.sav", out);
+        int missing_fails = !song_load(p);
+        int untouched = !memcmp(&keep, &song, sizeof song);
+        int ok = save_fails && !strcmp(why_save, "NO SUCH FILE") && load_fails && !strcmp(why_load, "NOT A SONG FILE") &&
+                 missing_fails && !strcmp(song_error(), "NO SUCH FILE") && untouched;
+        printf("save errors: save into a missing folder fails %d (%s), a junk file %d (%s), a missing one %d (%s), the song "
+               "untouched %d (want 1: %d)\n",
+               save_fails, why_save, load_fails, why_load, missing_fails, song_error(), untouched, ok);
+    }
+
     /* ---- sets of breaks: each folder in breaks/ is one, loose files one more;
      * the old copies of the curated breaks outside DIRT/ are tidied away, and
      * the CHOP page's SET stop switches set while the beat plays */
