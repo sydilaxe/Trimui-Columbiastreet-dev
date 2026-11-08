@@ -793,7 +793,11 @@ static void *load_samples(void *arg)
     Loader *ld = arg;
     breaks_scan_sets(BREAK_DIR);
     breaks_set_choice_file(SET_CHOICE);
-    ld->nb = breaks_load_chosen();
+    /* the set the last song was saved with, so its breaks are found by name;
+     * else the one picked last */
+    char want[SET_NAME] = "";
+    int si = song_file_set(SAVE_PATH, want, sizeof want) && want[0] ? breaks_find_set(want) : -1;
+    ld->nb = si >= 0 ? breaks_load_set(si) : breaks_load_chosen();
     __sync_synchronize();
     ld->stage = 1;
     ld->ns = bass_load_dir(BASS_DIR);

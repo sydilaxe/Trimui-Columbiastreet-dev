@@ -8,6 +8,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "breaks.h" /* SET_NAME */
+
 /* the app offers any release newer than this. Release builds set it from the tag
  * (make VERSION=x.y.z, which CI does); this is the version of a plain build. */
 #ifndef CS_VERSION
@@ -108,6 +110,9 @@ typedef struct {
      * midi_clock_only: follow the clock's tempo (and over the Brick link, its
      * bar) but not START, STOP, CONTINUE or song position */
     uint8_t midi_mode, midi_clock_only;
+    /* v0.10: the set of breaks the song was saved with (a folder in breaks/),
+     * brought in when it loads; empty in older songs, which keep the set in */
+    char break_set[SET_NAME];
 } Song;
 
 /* the MIDI clock: AUTO sends it and follows one that comes in, SEND always
@@ -227,4 +232,10 @@ int song_file_load(const char *path);
 /* why the last save or load failed, in capitals for the screen ("THE SD CARD IS FULL");
  * the details go to the log */
 const char *song_error(void);
+/* the folder for the song files, made if it isn't there; 0 (and song_error says
+ * why: THE SD CARD IS READ-ONLY...) if it can't be */
+int song_folder_ready(const char *dir);
+/* the set of breaks a song file was saved with, into out ("" for a song from
+ * before sets); 0 if the file won't read */
+int song_file_set(const char *path, char *out, int n);
 void slot_clear(int i);

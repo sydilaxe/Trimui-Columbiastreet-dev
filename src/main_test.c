@@ -6,6 +6,7 @@
  *
  * usage: cs_test OUTDIR [APP_DIR]   (APP_DIR holds breaks/ and bass/) */
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2066,11 +2067,21 @@ int main(int argc, char **argv)
         snprintf(p, sizeof p, "%s/missing.sav", out);
         int missing_fails = !song_load(p);
         int untouched = !memcmp(&keep, &song, sizeof song);
+        char why_missing[48];
+        snprintf(why_missing, sizeof why_missing, "%s", song_error());
+        /* the songs folder: made when it's missing, and the reason when it can't be */
+        snprintf(p, sizeof p, "%s/songs_made", out);
+        rmdir(p);
+        int made = song_folder_ready(p) && song_folder_ready(p);
+        snprintf(p, sizeof p, "%s/junk.sav/songs", out);
+        int blocked = !song_folder_ready(p) && !strcmp(song_error(), "A FILE IS IN THE WAY");
+        snprintf(p, sizeof p, "%s/junk.sav", out);
+        blocked &= !song_folder_ready(p) && !strcmp(song_error(), "A FILE IS IN THE WAY");
         int ok = save_fails && !strcmp(why_save, "NO SUCH FILE") && load_fails && !strcmp(why_load, "NOT A SONG FILE") &&
-                 missing_fails && !strcmp(song_error(), "NO SUCH FILE") && untouched;
+                 missing_fails && !strcmp(why_missing, "NO SUCH FILE") && untouched && made && blocked;
         printf("save errors: save into a missing folder fails %d (%s), a junk file %d (%s), a missing one %d (%s), the song "
-               "untouched %d (want 1: %d)\n",
-               save_fails, why_save, load_fails, why_load, missing_fails, song_error(), untouched, ok);
+               "untouched %d; the songs folder made %d, a file in its way said %d (want 1: %d)\n",
+               save_fails, why_save, load_fails, why_load, missing_fails, why_missing, untouched, made, blocked, ok);
     }
 
     /* ---- sets of breaks: each folder in breaks/ is one, loose files one more;
@@ -2176,6 +2187,75 @@ int main(int argc, char **argv)
         int remembered = !strcmp(rem, "KITS\n");
         int ok = found && tidied && kept && to_seta && n_seta == 3 && to_kits && n_kits == 1 && in_range && loud > 0.05 &&
                  remembered;
+        /* songs keep their set: one saved on KITS, one on SETA (break 1 on A3);
+         * opening each brings its set back in first, a song whose set has gone
+         * (or from before sets) loads on the set in */
+        int song_sets = 0;
+        {
+            char sdir[620], f[700];
+            snprintf(sdir, sizeof sdir, "%s/sets/songs", out);
+            ui_set_song_dir(sdir);
+            song_folder_ready(sdir);
+            int kits = breaks_find_set("KITS"), seta = breaks_find_set("SETA");
+            #define WAIT_SET(want)                                                                              \
+                for (int t = 0; t < 3000 && (breaks_switch_state() != SWITCH_IDLE || breaks_set_current() != (want)); \
+                     t++)                                                                                       \
+                    ui_tick(10), usleep(1000)
+            song.bpm = 141.f;
+            snprintf(f, sizeof f, "%s/song01.sav", sdir);
+            int s1 = breaks_set_current() == kits && song_file_save(f, song.bpm);
+            char got1[SET_NAME] = "";
+            song_file_set(f, got1, sizeof got1);
+            breaks_switch_start(seta);
+            WAIT_SET(seta);
+            song.bpm = 142.f;
+            song.pat.param[0][B_BANK] = 2; /* A3 */
+            snprintf(f, sizeof f, "%s/song02.sav", sdir);
+            int s2 = song_file_save(f, song.bpm);
+            char got2[SET_NAME] = "";
+            song_file_set(f, got2, sizeof got2);
+            /* song 3 from a set that has gone, song 4 from before sets */
+            for (int k = 3; k <= 4; k++) {
+                song.bpm = 140.f + k;
+                snprintf(f, sizeof f, "%s/song%02d.sav", sdir, k);
+                song_file_save(f, song.bpm);
+                FILE *sf = fopen(f, "r+b");
+                if (sf) {
+                    char nm[SET_NAME] = "GONE";
+                    if (k == 4)
+                        nm[0] = 0;
+                    fseek(sf, (long)offsetof(Song, break_set), SEEK_SET);
+                    fwrite(nm, sizeof nm, 1, sf);
+                    fclose(sf);
+                }
+            }
+            ui_set_song_dir(sdir); /* rescan */
+            breaks_switch_start(kits);
+            WAIT_SET(kits);
+            song.bpm = 120.f;
+            ui_song_open(1); /* SETA's song while KITS is in */
+            int waited = song.bpm == 120.f && breaks_switch_state() != SWITCH_IDLE;
+            WAIT_SET(seta);
+            ui_tick(10);
+            int in2 = breaks_set_current() == seta && song.bpm == 142.f && song.pat.param[0][B_BANK] == 2 &&
+                      !strcmp(banks[2].name, "A3");
+            ui_song_open(0); /* and back to KITS with song 1 */
+            WAIT_SET(kits);
+            ui_tick(10);
+            int in1 = breaks_set_current() == kits && song.bpm == 141.f;
+            ui_song_open(2); /* its set GONE isn't here: on KITS */
+            ui_tick(10);
+            int gone = breaks_switch_state() == SWITCH_IDLE && breaks_set_current() == kits && song.bpm == 143.f;
+            ui_song_open(3); /* from before sets */
+            ui_tick(10);
+            int old = breaks_switch_state() == SWITCH_IDLE && breaks_set_current() == kits && song.bpm == 144.f;
+            #undef WAIT_SET
+            song_sets = s1 && s2 && !strcmp(got1, "KITS") && !strcmp(got2, "SETA") && waited && in2 && in1 && gone && old;
+            printf("song sets: saved with KITS %d (%s) and SETA %d (%s); opening SETA's song loads its set first %d, then "
+                   "the song with its break by name %d; KITS's song brings KITS back %d; a song whose set has gone stays "
+                   "on the set in %d, one from before sets too %d (want 1: %d)\n",
+                   s1, got1, s2, got2, waited, in2, in1, gone, old, song_sets);
+        }
         printf("sets: %d found (%s), empty folder skipped %d, old copies tidied %d, the user's file kept %d; switched "
                "while playing to SETA %d (%d breaks), to KITS %d (%d break), params in range %d, sound after %d, "
                "remembered %d (want 1: %d)\n",

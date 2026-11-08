@@ -70,5 +70,8 @@ float ui_full_bpm(void);
  * shown in the header; msg, if not NULL, on screen for a moment */
 void ui_left_mode(int groove, const char *msg);
 void ui_set_page(int p); /* for the test harness */
+/* song file n (0-15) in, as A on the SONG page: its set of breaks first when it
+ * was saved with another one (test harness) */
+int ui_song_open(int n);
 void ui_set_chop_row(int p); /* the CHOP page's stop: -1 SET, 0.. the params (test harness) */
 int ui_scene_on(void);    /* the mute scene switched on (0 M1, 1 M2), or -1 */

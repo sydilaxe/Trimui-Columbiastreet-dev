@@ -137,8 +137,13 @@ the length. A folder inside a set is a pre-chopped break, one slice per file in 
 folder. The set picked last is remembered (in `breakset.txt`).
 
 Switching set keeps each channel on the same BREAK number, now pointing into the new set, so a
-pattern plays on with the other set's breaks. Songs and slots remember breaks by name, so a song
-saved with one set finds its breaks again when that set is in.
+pattern plays on with the other set's breaks.
+
+**Songs keep their set.** A song file (and the session saved at quit) remembers the set it was
+saved with. Loading the song brings that set back in first, then the song, with each channel on
+its own breaks again (they are found by name). The beat plays on while the set loads. If the set's
+folder has gone, the song loads on the set that's in. Songs from before sets do the same. At
+start-up the app opens the set the last session was saved with.
 
 Before sets, a folder straight in `breaks/` was a pre-chopped break. Such a folder is now a set of
 its own, with each slice a break: move it into a set folder to have it as one break again. After
@@ -280,8 +285,9 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
     (as before), 2 BARS or 4 BARS. It is saved with the song.
   - **SONG** keeps sets of patterns as songs, 1 to 16. X / Y picks one, B saves everything you'd
     want back (the ten slots and their grooves, the pattern playing, the mixer, the tempo, the mute
-    scenes and SWITCH) to it, and A loads it: at once when stopped, at the next SWITCH while
-    playing, NEXT showing until it does. Saving over a song takes B twice. The number is orange
+    scenes, SWITCH and the set of breaks) to it, and A loads it: at once when stopped, at the next
+    SWITCH while playing, NEXT showing until it does. A song saved with another set loads that set
+    first (the screen says so) and comes in once it has. Saving over a song takes B twice. The number is orange
     for the song last loaded or saved, dim where nothing is saved yet. The output, clock and Wi-Fi
     sync settings stay as they are, and half time stays on. Songs are files in
     `ColumbiaStreet/songs/` (`song01.sav`...), to copy off the card or between units.
