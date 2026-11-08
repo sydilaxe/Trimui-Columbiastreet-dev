@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include <errno.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1892,13 +1893,32 @@ static void resolve(Pattern *p, const Names *nm)
     }
 }
 
+/* why the last save or load failed, for the screen and the log */
+static char song_err[48];
+const char *song_error(void) { return song_err; }
+
+static void song_fail(const char *what, const char *path, int err)
+{
+    snprintf(song_err, sizeof song_err, "%s",
+             err == ENOSPC   ? "THE SD CARD IS FULL"
+             : err == EROFS  ? "THE SD CARD IS READ-ONLY"
+             : err == EACCES || err == EPERM ? "NO PERMISSION"
+             : err == ENOENT ? "NO SUCH FILE"
+             : err == EINVAL ? "NOT A SONG FILE"
+             : err == EIO    ? "THE SD CARD HAD AN ERROR"
+                             : "FILE ERROR");
+    fprintf(stderr, "song: couldn't %s %s: %s\n", what, path, err == EINVAL ? "not a song file, or a damaged one" : strerror(err));
+}
+
 static int song_write(const char *path, const Song *src)
 {
     char tmp[512];
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
     FILE *f = fopen(tmp, "wb");
-    if (!f)
+    if (!f) {
+        song_fail("save", path, errno);
         return 0;
+    }
     static Song out;
     out = *src;
     /* the names of A..H straight after the song, where older versions look
@@ -1909,10 +1929,15 @@ static int song_write(const char *path, const Song *src)
         names_of(song_slot(&out, i), &nm[1 + i]);
     out.magic = SONG_MAGIC;
     out.size = sizeof out;
-    int ok = fwrite(&out, sizeof out, 1, f) == 1 && fwrite(nm, sizeof nm, 1, f) == 1;
-    ok &= fclose(f) == 0;
-    if (ok)
-        ok = rename(tmp, path) == 0;
+    int ok = fwrite(&out, sizeof out, 1, f) == 1 && fwrite(nm, sizeof nm, 1, f) == 1, err = ok ? 0 : errno;
+    if (fclose(f) != 0 && ok)
+        ok = 0, err = errno;
+    if (ok && rename(tmp, path) != 0)
+        ok = 0, err = errno;
+    if (!ok) {
+        song_fail("save", path, err ? err : EIO);
+        remove(tmp);
+    }
     return ok;
 }
 
@@ -1927,8 +1952,10 @@ int song_save(const char *path)
 static int song_read(const char *path, Song *s)
 {
     FILE *f = fopen(path, "rb");
-    if (!f)
+    if (!f) {
+        song_fail("load", path, errno);
         return 0;
+    }
     Names nm[1 + NSLOT];
     uint32_t hdr[2] = {0, 0};
     /* this version's size, or an older one's (the fields it lacks start at
@@ -1943,8 +1970,10 @@ static int song_read(const char *path, Song *s)
     if (ok && fread(&nm[1 + NSLOT_V4], sizeof nm[0], NSLOT - NSLOT_V4, f) != NSLOT - NSLOT_V4) /* before v0.5: no I, J */
         memset(&nm[1 + NSLOT_V4], 0, sizeof nm[0] * (NSLOT - NSLOT_V4));
     fclose(f);
-    if (!ok)
+    if (!ok) {
+        song_fail("load", path, EINVAL);
         return 0;
+    }
     if (hdr[1] == SONG_SIZE_V1) { /* from v0.1: stereo out, the clock as its defaults */
         s->out_mode = OUT_STEREO, s->clk_side = 0, s->clk_ppqn = 1, s->clk_width = 5;
     }

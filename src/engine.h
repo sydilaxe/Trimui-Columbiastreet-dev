@@ -224,4 +224,7 @@ void slot_load(int i); /* now when stopped, at the next switch_div when playing 
  * switches it in as slot_load does; 0 if the file is missing or not a song */
 int song_file_save(const char *path, float bpm);
 int song_file_load(const char *path);
+/* why the last save or load failed, in capitals for the screen ("THE SD CARD IS FULL");
+ * the details go to the log */
+const char *song_error(void);
 void slot_clear(int i);

@@ -727,8 +727,12 @@ static void play_action(int b, int repeats)
     case BTN_A:
         if (repeats)
             break;
-        if (!(songs_there >> song_no & 1) || !song_file_load(p)) {
+        if (!(songs_there >> song_no & 1)) {
             say("SONG %d IS EMPTY", song_no + 1);
+            break;
+        }
+        if (!song_file_load(p)) { /* there, but it won't read: say why (the log has more) */
+            say("SONG %d WON'T LOAD: %s", song_no + 1, song_error());
             break;
         }
         song_cur_no = song_no;
@@ -753,7 +757,7 @@ static void play_action(int b, int repeats)
             say("SAVED SONG %d", song_no + 1);
         }
         else
-            say("COULDN'T SAVE SONG %d", song_no + 1);
+            say("SONG %d NOT SAVED: %s", song_no + 1, song_error());
         break;
     }
 }
