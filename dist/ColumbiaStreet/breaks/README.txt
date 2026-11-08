@@ -1,21 +1,27 @@
-Break loops for Columbia Street.
+Break sets for Columbia Street.
 
-A .wav file here is one break loop. Columbia Street finds its hits and cuts a
-slice at each one. Put the tempo in the name so the slices land on the 16th
-grid, for example:
+Each folder here is a set of breaks, and one set plays at a time: pick it on
+the CHOP page (up from BREAK to SET, X / Y to choose, A to load). DIRT is the
+curated set. .wav files put straight in this folder make one more set, BREAKS.
+Sets are found when the app starts, so restart it after adding a folder.
 
-    APACHE_115bpm.wav
-    THINK_114bpm.wav
+In a set, a .wav file is one break loop. Columbia Street finds its hits and
+cuts a slice at each one. Put the tempo in the name so the slices land on the
+16th grid, for example:
+
+    HIPHOP/APACHE_115bpm.wav
+    HIPHOP/THINK_114bpm.wav
 
 Without a tempo it guesses one from the length (1, 2, 4 or 8 bars).
 
-A folder here is a break that is already chopped: its .wav files, in name
-order, are the slices (for example AMENCUT_149bpm/001.wav, 002.wav, ...).
+A folder inside a set is a break that is already chopped: its .wav files, in
+name order, are the slices (for example DIRT/AMENCUT_149bpm/001.wav, 002.wav,
+...).
 
 Any PCM or float WAV works, mono or stereo, any sample rate, up to 16 s per
-loop and 64 slices. Up to 32 banks load, files first, then folders, in name
-order. Banks are shown by the first 6 letters of the name.
+loop and 64 slices. Up to 32 banks load from a set, files first, then folders,
+in name order. Banks are shown by the first 6 letters of the name.
 
 The curated set (Amen, PLEAD, RAWCLN, SDSTCK, BLLSTP, the Amen pre-chopped
 and a jungle hit kit) comes from TidalCycles' Dirt-Samples library and is
-fetched by tools/fetch_samples.sh.
+fetched by tools/fetch_samples.sh into DIRT/.

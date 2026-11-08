@@ -2,12 +2,14 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <pthread.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 Bank banks[MAX_BANKS];
 int nbanks;
@@ -430,42 +432,281 @@ static int bank_from_folder(Bank *b, const char *dir, const char *name)
     return 1;
 }
 
-int breaks_load_dir(const char *dir)
+/* one set's banks into out[] (from *n on): its .wav files are loops, its
+ * folders pre-chopped breaks, files first, then folders, in name order */
+static int load_set_dir(const char *dir, Bank *out, int *n)
 {
     char *names[MAX_BANKS * 2];
     int added = 0;
-    int n = list_dir(dir, names, MAX_BANKS * 2, 0);
-    for (int i = 0; i < n; i++) {
+    int nn = list_dir(dir, names, MAX_BANKS * 2, 0);
+    for (int i = 0; i < nn; i++) {
         char path[1100], label[8];
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
         int len = 0;
-        float *d = nbanks < MAX_BANKS ? load_wav(path, &len, 16.f) : NULL;
+        float *d = *n < MAX_BANKS ? load_wav(path, &len, 16.f) : NULL;
         if (d) {
             label_from_name(names[i], label);
-            dedupe(label, banks[0].name, sizeof(Bank), nbanks);
-            bank_from_loop(&banks[nbanks++], label, d, len, bpm_from_name(names[i]));
+            dedupe(label, out[0].name, sizeof(Bank), *n);
+            bank_from_loop(&out[(*n)++], label, d, len, bpm_from_name(names[i]));
             added++;
             fprintf(stderr, "breaks: %s -> %s, %d slices, %.1f BPM, %d steps\n", names[i], label,
-                    banks[nbanks - 1].nslices, banks[nbanks - 1].bpm, banks[nbanks - 1].steps);
+                    out[*n - 1].nslices, out[*n - 1].bpm, out[*n - 1].steps);
         }
         else
             fprintf(stderr, "breaks: skipped %s\n", path);
         free(names[i]);
     }
-    n = list_dir(dir, names, MAX_BANKS * 2, 1);
-    for (int i = 0; i < n; i++) {
+    nn = list_dir(dir, names, MAX_BANKS * 2, 1);
+    for (int i = 0; i < nn; i++) {
         char path[1100];
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
-        if (nbanks < MAX_BANKS && bank_from_folder(&banks[nbanks], path, names[i])) {
-            dedupe(banks[nbanks].name, banks[0].name, sizeof(Bank), nbanks);
-            nbanks++;
+        if (*n < MAX_BANKS && bank_from_folder(&out[*n], path, names[i])) {
+            dedupe(out[*n].name, out[0].name, sizeof(Bank), *n);
+            (*n)++;
             added++;
-            fprintf(stderr, "breaks: %s/ -> %s, %d slices\n", names[i], banks[nbanks - 1].name,
-                    banks[nbanks - 1].nslices);
+            fprintf(stderr, "breaks: %s/ -> %s, %d slices\n", names[i], out[*n - 1].name, out[*n - 1].nslices);
         }
         free(names[i]);
     }
     return added;
+}
+
+int breaks_load_dir(const char *dir) { return load_set_dir(dir, banks, &nbanks); }
+
+/* ----------------------------------------------------------------- sets */
+
+static char set_root[512] = "breaks";
+static char set_names[MAX_SETS][SET_NAME];
+static int nsets, set_loose = -1, set_cur = -1;
+static char choice_path[512];
+
+static int has_wavs(const char *dir)
+{
+    char *nm[1];
+    int n = list_dir(dir, nm, 1, 0);
+    if (n)
+        free(nm[0]);
+    return n;
+}
+
+static long file_size(const char *path)
+{
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode) ? (long)st.st_size : -1;
+}
+
+/* Before sets, the curated breaks sat straight in breaks/ (AMEN_153bpm.wav,
+ * AMENCUT_149bpm/, JUNGLE/); an update now brings them in breaks/DIRT/ and
+ * leaves the old copies behind. A file there that is the same size as its
+ * namesake in DIRT/ is that copy: it goes, and so does a folder it empties. */
+static void tidy_legacy(const char *root)
+{
+    char dirt[700];
+    snprintf(dirt, sizeof dirt, "%s/" CURATED_SET, root);
+    struct stat st;
+    if (stat(dirt, &st) != 0 || !S_ISDIR(st.st_mode))
+        return;
+    char *names[MAX_SETS * 2];
+    int n = list_dir(dirt, names, MAX_SETS * 2, 0);
+    for (int i = 0; i < n; i++) {
+        char a[1400], b[1400];
+        snprintf(a, sizeof a, "%s/%s", root, names[i]);
+        snprintf(b, sizeof b, "%s/%s", dirt, names[i]);
+        long sa = file_size(a);
+        if (sa >= 0 && sa == file_size(b) && unlink(a) == 0)
+            fprintf(stderr, "breaks: removed the old copy of %s/%s\n", CURATED_SET, names[i]);
+        free(names[i]);
+    }
+    n = list_dir(dirt, names, MAX_SETS * 2, 1);
+    for (int i = 0; i < n; i++) {
+        char olddir[1400], newdir[1400];
+        snprintf(olddir, sizeof olddir, "%s/%s", root, names[i]);
+        snprintf(newdir, sizeof newdir, "%s/%s", dirt, names[i]);
+        char *files[MAX_SLICES * 2];
+        int nf = list_dir(olddir, files, MAX_SLICES * 2, 0), gone = 0;
+        for (int k = 0; k < nf; k++) {
+            char a[2900], b[2900];
+            snprintf(a, sizeof a, "%s/%s", olddir, files[k]);
+            snprintf(b, sizeof b, "%s/%s", newdir, files[k]);
+            long sa = file_size(a);
+            gone += sa >= 0 && sa == file_size(b) && unlink(a) == 0;
+            free(files[k]);
+        }
+        if (gone) {
+            fprintf(stderr, "breaks: removed %d old files of %s/%s/\n", gone, CURATED_SET, names[i]);
+            rmdir(olddir); /* only if nothing of the user's is left in it */
+        }
+        free(names[i]);
+    }
+}
+
+int breaks_scan_sets(const char *root)
+{
+    char cur[SET_NAME] = "";
+    if (set_cur >= 0)
+        snprintf(cur, sizeof cur, "%s", set_names[set_cur]);
+    snprintf(set_root, sizeof set_root, "%s", root);
+    tidy_legacy(root);
+    nsets = 0;
+    set_loose = -1;
+    if (has_wavs(root)) {
+        set_loose = nsets;
+        snprintf(set_names[nsets++], SET_NAME, "%s", LOOSE_SET);
+    }
+    char *names[MAX_SETS];
+    int n = list_dir(root, names, MAX_SETS, 1);
+    for (int i = 0; i < n; i++) {
+        char path[1100];
+        snprintf(path, sizeof path, "%s/%s", root, names[i]);
+        int any = has_wavs(path);
+        if (!any) { /* a set of pre-chopped breaks only */
+            char *sub[MAX_BANKS];
+            int ns = list_dir(path, sub, MAX_BANKS, 1);
+            for (int k = 0; k < ns; k++) {
+                char sp[2200];
+                snprintf(sp, sizeof sp, "%s/%s", path, sub[k]);
+                any |= has_wavs(sp) > 0;
+                free(sub[k]);
+            }
+        }
+        if (any && nsets < MAX_SETS)
+            snprintf(set_names[nsets++], SET_NAME, "%s", names[i]);
+        free(names[i]);
+    }
+    set_cur = cur[0] ? breaks_find_set(cur) : -1; /* the set in banks[] keeps its place by name */
+    return nsets;
+}
+
+int breaks_nsets(void) { return nsets; }
+const char *breaks_set_name(int i) { return i >= 0 && i < nsets ? set_names[i] : ""; }
+int breaks_set_current(void) { return set_cur; }
+
+int breaks_find_set(const char *name)
+{
+    for (int i = 0; i < nsets; i++)
+        if (!strcmp(set_names[i], name))
+            return i;
+    for (int i = 0; i < nsets; i++)
+        if (!strcasecmp(set_names[i], name))
+            return i;
+    return -1;
+}
+
+static void set_dir(int i, char *buf, int len)
+{
+    if (i == set_loose)
+        snprintf(buf, len, "%s", set_root);
+    else
+        snprintf(buf, len, "%s/%s", set_root, set_names[i]);
+}
+
+void breaks_set_choice_file(const char *path) { snprintf(choice_path, sizeof choice_path, "%s", path); }
+
+static void save_choice(void)
+{
+    if (!choice_path[0] || set_cur < 0)
+        return;
+    FILE *f = fopen(choice_path, "w");
+    if (f) {
+        fprintf(f, "%s\n", set_names[set_cur]);
+        fclose(f);
+    }
+}
+
+int breaks_load_set(int i)
+{
+    if (i < 0 || i >= nsets)
+        return 0;
+    char dir[1100];
+    set_dir(i, dir, sizeof dir);
+    fprintf(stderr, "breaks: set %s\n", set_names[i]);
+    set_cur = i;
+    return load_set_dir(dir, banks, &nbanks);
+}
+
+int breaks_load_chosen(void)
+{
+    int i = -1;
+    FILE *f = choice_path[0] ? fopen(choice_path, "r") : NULL;
+    if (f) {
+        char line[SET_NAME + 8] = "";
+        if (fgets(line, sizeof line, f)) {
+            line[strcspn(line, "\r\n")] = 0;
+            i = breaks_find_set(line);
+        }
+        fclose(f);
+    }
+    if (i < 0)
+        i = breaks_find_set(CURATED_SET);
+    if (i < 0)
+        i = 0;
+    return breaks_load_set(i);
+}
+
+/* Switching while the music plays: the new set loads into next[] on its own
+ * thread; once it is in, breaks_switch_commit swaps it in under the audio
+ * lock (a memcpy), and breaks_switch_cleanup frees the old samples after. */
+static Bank next[MAX_BANKS], old[MAX_BANKS];
+static int nnext, nold, next_set;
+static volatile int sw_state; /* SWITCH_IDLE, SWITCH_LOADING, SWITCH_READY */
+static pthread_t sw_thread;
+
+static void *switch_main(void *arg)
+{
+    (void)arg;
+    char dir[1100];
+    set_dir(next_set, dir, sizeof dir);
+    nnext = 0;
+    load_set_dir(dir, next, &nnext);
+    __sync_synchronize();
+    sw_state = SWITCH_READY;
+    return NULL;
+}
+
+int breaks_switch_start(int i)
+{
+    if (sw_state != SWITCH_IDLE || i < 0 || i >= nsets)
+        return 0;
+    next_set = i;
+    sw_state = SWITCH_LOADING;
+    if (pthread_create(&sw_thread, NULL, switch_main, NULL) != 0) {
+        switch_main(NULL);
+        return 1;
+    }
+    pthread_detach(sw_thread);
+    return 1;
+}
+
+int breaks_switch_state(void) { return sw_state; }
+int breaks_switch_target(void) { return sw_state != SWITCH_IDLE ? next_set : -1; }
+
+int breaks_switch_commit(void)
+{
+    if (sw_state != SWITCH_READY)
+        return 0;
+    __sync_synchronize();
+    if (!nnext) { /* nothing in it would load: keep what plays */
+        sw_state = SWITCH_IDLE;
+        return -1;
+    }
+    memcpy(old, banks, sizeof(Bank) * nbanks);
+    nold = nbanks;
+    memcpy(banks, next, sizeof(Bank) * nnext);
+    nbanks = nnext;
+    nnext = 0;
+    set_cur = next_set;
+    return 1;
+}
+
+void breaks_switch_cleanup(void)
+{
+    if (sw_state != SWITCH_READY)
+        return;
+    for (int i = 0; i < nold; i++)
+        free(old[i].data);
+    nold = 0;
+    save_choice();
+    sw_state = SWITCH_IDLE;
 }
 
 /* ----------------------------------------------------------------- bass */

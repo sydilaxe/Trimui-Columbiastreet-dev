@@ -59,7 +59,8 @@ static const Ev script[] = {
     SHOT(11400, "pattern_edit"),
     /* CHOP page: BRK2, bits down to 6, compressor up, filter */
     PRESS(12000, BTN_R1), PRESS(12100, BTN_RIGHT),
-    PRESS(12200, BTN_UP), PRESS(12300, BTN_UP), PRESS(12400, BTN_UP), /* -> BITS */
+    /* up through the SET stop (above the params) and round -> BITS */
+    PRESS(12150, BTN_UP), PRESS(12200, BTN_UP), PRESS(12300, BTN_UP), PRESS(12400, BTN_UP),
     {12500, BTN_Y, 1, NULL}, {13600, BTN_Y, 0, NULL},
     PRESS(13700, BTN_DOWN), PRESS(13800, BTN_DOWN), /* -> COMP */
     {13900, BTN_X, 1, NULL}, {15200, BTN_X, 0, NULL},
@@ -108,6 +109,23 @@ static void write_wav(const char *path, const int16_t *pcm, int frames)
     put32(f, frames * 4);
     fwrite(pcm, 4, frames, f);
     fclose(f);
+}
+
+/* a test break: a noise hit on every 16th at bpm for steps 16ths (len_ms
+ * instead when steps is 0, one hit) */
+static void write_hits(const char *path, float bpm, int steps, int len_ms)
+{
+    int g = (int)(RATE * 15.f / bpm), frames = steps ? steps * g : len_ms * RATE / 1000;
+    int16_t *pcm = calloc(frames * 2, sizeof(int16_t));
+    uint32_t r = 7;
+    for (int i = 0; i < frames; i++) {
+        int k = steps ? i % g : i;
+        r = r * 1664525u + 1013904223u;
+        float x = ((int)(r >> 16) - 32768) * 0.5f * expf(-k / (0.02f * RATE));
+        pcm[2 * i] = pcm[2 * i + 1] = (int16_t)x;
+    }
+    write_wav(path, pcm, frames);
+    free(pcm);
 }
 
 static void write_ppm(const char *path, const uint32_t *fb)
@@ -297,7 +315,8 @@ int main(int argc, char **argv)
 
     engine_init(RATE);
     snprintf(path, sizeof path, "%s/breaks", app);
-    int nb = breaks_load_dir(path);
+    breaks_scan_sets(path);
+    int nb = breaks_load_chosen();
     snprintf(path, sizeof path, "%s/bass", app);
     int ns = bass_load_dir(path);
     if (!nbanks)
@@ -2025,6 +2044,115 @@ int main(int argc, char **argv)
                "0x%02x), the memory stick passed over %d (want 1: %d)\n",
                desc, dn, sn > 16, finds, found ? ld[0].bus : 0, found ? ld[0].dev : 0, found ? ld[0].ep : 0,
                found == 1, desc && finds);
+    }
+    /* ---- sets of breaks: each folder in breaks/ is one, loose files one more;
+     * the old copies of the curated breaks outside DIRT/ are tidied away, and
+     * the CHOP page's SET stop switches set while the beat plays */
+    {
+        char root[600], p[900];
+        snprintf(root, sizeof root, "%s/sets/breaks", out);
+        snprintf(p, sizeof p, "rm -rf '%s/sets'", out);
+        if (system(p) != 0)
+            printf("sets: couldn't clear %s/sets\n", out);
+        const char *dirs[] = {"", "/DIRT", "/DIRT/CHOP", "/CHOP", "/SETA", "/EMPTY", "/KITS", "/KITS/K1"};
+        for (unsigned i = 0; i < sizeof dirs / sizeof *dirs; i++) {
+            snprintf(p, sizeof p, "%s%s", root, dirs[i]);
+            mkdir(p, 0755);
+            if (!i) {
+                char up[620];
+                snprintf(up, sizeof up, "%s/sets", out);
+                mkdir(up, 0755);
+                mkdir(p, 0755);
+            }
+        }
+        snprintf(p, sizeof p, "%s/LOOSE_140bpm.wav", root), write_hits(p, 140.f, 16, 0);
+        snprintf(p, sizeof p, "%s/DIRT/ONE_140bpm.wav", root), write_hits(p, 140.f, 16, 0);
+        snprintf(p, sizeof p, "%s/ONE_140bpm.wav", root), write_hits(p, 140.f, 16, 0); /* the old copy */
+        for (int k = 1; k <= 4; k++) {
+            snprintf(p, sizeof p, "%s/DIRT/CHOP/%03d.wav", root, k), write_hits(p, 0, 0, 100);
+            snprintf(p, sizeof p, "%s/CHOP/%03d.wav", root, k), write_hits(p, 0, 0, 100);
+            snprintf(p, sizeof p, "%s/KITS/K1/%03d.wav", root, k), write_hits(p, 0, 0, 120);
+        }
+        snprintf(p, sizeof p, "%s/CHOP/MINE.wav", root), write_hits(p, 0, 0, 300); /* the user's, kept */
+        for (int k = 1; k <= 3; k++)
+            snprintf(p, sizeof p, "%s/SETA/A%d_150bpm.wav", root, k), write_hits(p, 150.f, 8 * k, 0);
+        snprintf(p, sizeof p, "%s/EMPTY/notes.txt", root);
+        FILE *nf = fopen(p, "w");
+        if (nf)
+            fclose(nf);
+
+        int n = breaks_scan_sets(root);
+        char list[256] = "";
+        for (int i = 0; i < n; i++)
+            snprintf(list + strlen(list), sizeof list - strlen(list), "%s%s", i ? " " : "", breaks_set_name(i));
+        snprintf(p, sizeof p, "%s/ONE_140bpm.wav", root);
+        int tidied = access(p, F_OK) != 0;
+        snprintf(p, sizeof p, "%s/CHOP/001.wav", root);
+        tidied &= access(p, F_OK) != 0;
+        snprintf(p, sizeof p, "%s/CHOP/MINE.wav", root);
+        int kept = access(p, F_OK) == 0;
+        int found = n == 5 && !strcmp(list, "BREAKS CHOP DIRT KITS SETA") && breaks_find_set("EMPTY") < 0 &&
+                    breaks_find_set("seta") == 4 && breaks_set_current() == breaks_find_set("DIRT");
+        char choice[620];
+        snprintf(choice, sizeof choice, "%s/sets/breakset.txt", out);
+        breaks_set_choice_file(choice);
+
+        /* switch to SETA, then KITS, through the SET stop while playing */
+        static int16_t spcm[RATE / 100 * 2];
+        static uint32_t sfb[SCREEN_W * SCREEN_H];
+        song_default();
+        song_clamp();
+        engine_set_playing(1);
+        ui_set_page(PAGE_CHOP);
+        ui_set_chop_row(0);
+        ui_button(BTN_UP, 1), ui_button(BTN_UP, 0); /* params -> SET */
+        int to_seta = 0, to_kits = 0, n_seta = 0, n_kits = 0, in_range = 1;
+        double loud = 0.0;
+        for (int round = 0; round < 2; round++) {
+            int want = breaks_find_set(round ? "KITS" : "SETA");
+            int b = round ? BTN_Y : BTN_X;
+            ui_button(b, 1), ui_button(b, 0);
+            if (!round) {
+                ui_button(b, 1), ui_button(b, 0); /* DIRT -> KITS -> SETA */
+                ui_draw(sfb);
+                snprintf(p, sizeof p, "%s/sets.ppm", out);
+                write_ppm(p, sfb);
+            }
+            ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+            for (int t = 0; t < 2000 && (breaks_switch_state() != SWITCH_IDLE || breaks_set_current() != want); t++) {
+                engine_render(spcm, RATE / 100);
+                ui_tick(10);
+                usleep(1000);
+            }
+            for (int v = 0; v < NBRK; v++)
+                in_range &= song.pat.param[v][B_BANK] < nbanks && song.pat.param[v][B_SLICE] < banks[song.pat.param[v][B_BANK]].nslices;
+            if (round)
+                to_kits = breaks_set_current() == want, n_kits = nbanks;
+            else
+                to_seta = breaks_set_current() == want, n_seta = nbanks;
+            for (int k = 0; k < 200; k++) { /* two seconds on the new set */
+                engine_render(spcm, RATE / 100);
+                ui_tick(10);
+                for (int i = 0; i < RATE / 100 * 2; i++)
+                    loud = fmax(loud, abs(spcm[i]) / 32768.0);
+            }
+        }
+        engine_set_playing(0);
+        char rem[SET_NAME + 8] = "";
+        FILE *cf = fopen(choice, "r");
+        if (cf) {
+            if (!fgets(rem, sizeof rem, cf))
+                rem[0] = 0;
+            fclose(cf);
+        }
+        int remembered = !strcmp(rem, "KITS\n");
+        int ok = found && tidied && kept && to_seta && n_seta == 3 && to_kits && n_kits == 1 && in_range && loud > 0.05 &&
+                 remembered;
+        printf("sets: %d found (%s), empty folder skipped %d, old copies tidied %d, the user's file kept %d; switched "
+               "while playing to SETA %d (%d breaks), to KITS %d (%d break), params in range %d, sound after %d, "
+               "remembered %d (want 1: %d)\n",
+               n, list, breaks_find_set("EMPTY") < 0, tidied, kept, to_seta, n_seta, to_kits, n_kits, in_range,
+               loud > 0.05, remembered, ok);
     }
     breaks_free();
     return 0;

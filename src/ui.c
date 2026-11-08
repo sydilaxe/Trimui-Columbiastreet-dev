@@ -43,6 +43,9 @@ static const char *const sync_mode_names[NSYNCMODE] = {"OFF", "AUTO", "LEAD", "F
 
 static int page;
 static int pat_v, pat_r, chop_v, chop_p, bass_p, mix_v, mix_r, song_cur;
+/* the CHOP page's SET stop (chop_p -1, above the params): the set of breaks
+ * X / Y has picked, which A loads; -1 until the stop is first reached */
+static int set_pick = -1;
 static int held[BTN_COUNT], hold_ms[BTN_COUNT], rep_ms[BTN_COUNT], rep_n[BTN_COUNT];
 static int b_used; /* B was a modifier this press (PATTERN page) */
 static int fx_order[4], fx_norder;
@@ -312,6 +315,7 @@ void ui_notice(const char *msg) { say("%s", msg); }
 int ui_quit_requested(void) { return quit; }
 int ui_page(void) { return page; }
 void ui_set_page(int p) { page = p; }
+void ui_set_chop_row(int p) { chop_p = p < -1 ? -1 : p >= NP ? NP - 1 : p; }
 
 int ui_take_changed(void)
 {
@@ -540,11 +544,46 @@ static void pattern_b_released(void)
     say("%s %s  E(%d,%d) >%d", voice_names[pat_v], row_names[pat_r], c->hits, c->steps, c->rot);
 }
 
+/* the SET stop: X / Y pick a set of breaks (a folder in breaks/), A loads it
+ * while the music plays on; ui_tick swaps it in once it is ready */
+static void set_action(int b, int repeats)
+{
+    int n = breaks_nsets();
+    if (!n) {
+        if (b == BTN_X || b == BTN_Y || b == BTN_A)
+            say("NO SETS: PUT A FOLDER OF WAVS IN BREAKS/");
+        return;
+    }
+    if (set_pick < 0 || set_pick >= n)
+        set_pick = breaks_set_current() >= 0 ? breaks_set_current() : 0;
+    if (b == BTN_X || b == BTN_Y) {
+        set_pick = wrap(set_pick + (b == BTN_X ? 1 : -1), n);
+        return;
+    }
+    if (b != BTN_A || repeats)
+        return;
+    if (breaks_switch_state() != SWITCH_IDLE)
+        say("STILL LOADING SET %.24s", breaks_set_name(breaks_switch_target()));
+    else if (set_pick == breaks_set_current())
+        say("SET %.24s IS IN", breaks_set_name(set_pick));
+    else if (breaks_switch_start(set_pick))
+        say("LOADING SET %.24s...", breaks_set_name(set_pick));
+}
+
 static void chop_action(int b, int repeats)
 {
+    if (chop_p < 0 && (b == BTN_X || b == BTN_Y || b == BTN_A)) {
+        set_action(b, repeats);
+        return;
+    }
     switch (b) {
-    case BTN_UP: chop_p = wrap(chop_p - 1, NP); break;
-    case BTN_DOWN: chop_p = wrap(chop_p + 1, NP); break;
+    case BTN_UP:
+    case BTN_DOWN:
+        /* -1 is the SET stop, above the params */
+        chop_p = wrap(chop_p + 1 + (b == BTN_DOWN ? 1 : -1), NP + 1) - 1;
+        if (chop_p < 0 && breaks_nsets() && (set_pick < 0 || breaks_switch_state() == SWITCH_IDLE))
+            set_pick = breaks_set_current() >= 0 ? breaks_set_current() : 0;
+        break;
     case BTN_LEFT: chop_v = wrap(chop_v - 1, NBRK); break;
     case BTN_RIGHT: chop_v = wrap(chop_v + 1, NBRK); break;
     case BTN_X: adjust_param(chop_v, chop_p, +1, repeats); break;
@@ -1015,9 +1054,29 @@ void ui_button(int b, int down)
     ui_unlock();
 }
 
+/* a set of breaks finished loading: swapped in with the sound locked, the old
+ * samples freed after */
+static void set_poll(void)
+{
+    if (breaks_switch_state() != SWITCH_READY)
+        return;
+    ui_lock();
+    int r = breaks_switch_commit();
+    if (r > 0)
+        engine_banks_changed();
+    ui_unlock();
+    breaks_switch_cleanup();
+    if (r > 0)
+        say("SET %.24s: %d BREAKS", breaks_set_name(breaks_set_current()), nbanks);
+    else
+        say("NO BREAKS WOULD LOAD FROM THAT SET");
+    changed = 1;
+}
+
 void ui_tick(int ms)
 {
     now_ms += ms;
+    set_poll();
     ui_lock();
     groove_edit(ms);
     if (live.songs_loaded != songs_seen) {
@@ -1173,6 +1232,8 @@ static void draw_footer(void)
         "A:LOAD  X:SAVE  R2+Y:CLEAR",
     };
     const char *hint = hints[page];
+    if (page == PAGE_CHOP && chop_p < 0)
+        hint = "^v:PARAMS  X/Y:PICK A SET  A:LOAD IT  B:MUTE";
     if (page == PAGE_SONG && song_cur >= NSLOT)
         hint = song_cur == SG_TEMPO   ? (ts_f == 0 ? "<>:SETTING  X/Y:TEMPO  R2+X:TAP" : "<>:SETTING  X/Y:SYNC MODE")
                : song_cur == SG_OUT   ? "<>:SETTING  X/Y:+/-"
@@ -1354,12 +1415,33 @@ static void draw_chop(void)
     if (live.play_pos[v] >= 0.f)
         gfx_fill(wx + (int)(ww * live.play_pos[v]), wy, 2, wh, 0xffffff);
     char info[96];
-    float fit = song.bpm / b->bpm;
-    snprintf(info, sizeof info, "%.6s  %.0f BPM  %d STEPS  %d SLICES  FIT x%.2f", b->name, b->bpm, b->steps,
-             b->nslices, fit);
-    gfx_text(10, wy + wh + 4, info, C_DIM, FONT_SMALL);
-    snprintf(info, sizeof info, "SLICE %d", ls + 1);
-    text_r(SCREEN_W - 10, wy + wh + 4, info, vcol[v], FONT_SMALL);
+    int iy = wy + wh + 4;
+    if (chop_p < 0) {
+        /* the SET stop: the set picked, and whether it is the one in */
+        int n = breaks_nsets(), pk = set_pick >= 0 && set_pick < n ? set_pick : breaks_set_current();
+        int loading = breaks_switch_state() != SWITCH_IDLE, in = pk == breaks_set_current();
+        gfx_fill(wx, iy - 2, ww, 24, C_PANEL2);
+        gfx_rect(wx, iy - 2, ww, 24, 2, vcol[v]);
+        gfx_text(wx + 8, iy, "SET", C_TEXT, FONT_SMALL);
+        snprintf(info, sizeof info, "< %.24s >", n ? breaks_set_name(pk) : "NONE");
+        gfx_text(wx + 50, iy, info, in ? C_TEXT : C_ACCENT, FONT_SMALL);
+        if (loading)
+            snprintf(info, sizeof info, "LOADING %.20s...", breaks_set_name(breaks_switch_target()));
+        else if (n)
+            snprintf(info, sizeof info, in ? "%d/%d  IN" : "%d/%d  A:LOAD", pk + 1, n);
+        else
+            snprintf(info, sizeof info, "ADD FOLDERS TO BREAKS/");
+        text_r(wx + ww - 8, iy, info, loading || !in ? C_ACCENT : C_DIM, FONT_SMALL);
+    }
+    else {
+        float fit = song.bpm / b->bpm;
+        const char *set = breaks_set_current() >= 0 ? breaks_set_name(breaks_set_current()) : "";
+        snprintf(info, sizeof info, "%.12s%s%.6s  %.0f BPM  %d STEPS  %d SLICES  FIT x%.2f", set, *set ? "/" : "",
+                 b->name, b->bpm, b->steps, b->nslices, fit);
+        gfx_text(10, iy, info, C_DIM, FONT_SMALL);
+        snprintf(info, sizeof info, "SLICE %d", ls + 1);
+        text_r(SCREEN_W - 10, iy, info, vcol[v], FONT_SMALL);
+    }
     draw_params(v, NP, chop_p, 8, wy + wh + 30, 316, 7, 30);
 }
 

@@ -45,6 +45,7 @@
 #define SAVE_PATH "columbia.sav"
 #define BREAK_DIR "breaks"
 #define BASS_DIR "bass"
+#define SET_CHOICE "breakset.txt" /* the set of breaks picked last */
 #define CA_BUNDLE "cacert.pem"
 
 static uint64_t now_us(void)
@@ -759,7 +760,9 @@ typedef struct {
 static void *load_samples(void *arg)
 {
     Loader *ld = arg;
-    ld->nb = breaks_load_dir(BREAK_DIR);
+    breaks_scan_sets(BREAK_DIR);
+    breaks_set_choice_file(SET_CHOICE);
+    ld->nb = breaks_load_chosen();
     __sync_synchronize();
     ld->stage = 1;
     ld->ns = bass_load_dir(BASS_DIR);

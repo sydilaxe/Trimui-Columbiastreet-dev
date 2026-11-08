@@ -34,9 +34,13 @@ NextUI does) from its own thread and puts the user's LED settings back at quit; 
 it against a stand-in folder.
 
 Samples are never committed: `tools/fetch_samples.sh` fetches them from Dirt-Samples at a pinned
-commit into `dist/ColumbiaStreet/breaks` and `bass` (both gitignored apart from their
+commit into `dist/ColumbiaStreet/breaks/DIRT` and `bass` (both gitignored apart from their
 README.txt). The breaks are real recordings sliced at load time (`src/breaks.c`), not
-synthesised.
+synthesised. They come in sets, one loaded at a time: each folder in `breaks/` is a set (loose
+`.wav` files there make the set BREAKS), and inside a set a `.wav` is a loop and a folder a
+pre-chopped break. The CHOP page's SET stop (up from BREAK) loads another on a thread and swaps it
+in under the audio lock (`engine_banks_changed`); the pick is kept in `breakset.txt`. Sets are new
+on the TrimUI, like the mute scenes.
 
 When you change a control or a screen, update the README's Controls section (and the Brick Pro
 table for the sticks) and the footer hints in `src/ui.c`. When you change the engine, run `make

@@ -81,8 +81,9 @@ curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/
   d-pad repeat, reverse and tape stop.
 - SELECT makes a new jungle beat (R2+SELECT undoes it); 8 pattern slots switch on the bar line; Wi-Fi sync with
   HI5 and Jaffedrone.
-- Your own breaks: drop a WAV loop into `Apps/ColumbiaStreet/breaks/` (with the tempo in its name, e.g.
-  `APACHE_115bpm.wav`) and it is sliced at its hits when the app starts.
+- Your own breaks, in sets: make a folder in `Apps/ColumbiaStreet/breaks/`, fill it with WAV loops (with the
+  tempo in their names, e.g. `APACHE_115bpm.wav`), and pick it as a set on the CHOP page (up from BREAK, X / Y,
+  then A). The curated breaks are the set `DIRT`.
 
 If you hear crackles, set `CS_BUFFER=1024` in `launch.sh` in the app folder (`Apps/ColumbiaStreet` on TrimUI OS,
 `MUOS/application/Columbia Street` on MustardOS). The log is written to `log.txt` in the same folder.

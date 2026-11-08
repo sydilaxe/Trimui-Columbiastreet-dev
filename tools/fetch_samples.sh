@@ -21,23 +21,24 @@ get() { # get SRC DEST
     mv "$APP/$2.part" "$APP/$2"
 }
 
+# The curated set: breaks/DIRT/ (each folder in breaks/ is a set of breaks).
 # Whole loops. The tempo in the name tells Columbia Street how long a 16th is,
 # so the slices land on the grid.
-get breaks152/000_AMEN.WAV     "breaks/AMEN_153bpm.wav"
-get breaks157/000_PLEAD.WAV    "breaks/PLEAD_157bpm.wav"
-get breaks165/000_RAWCLN.WAV   "breaks/RAWCLN_165bpm.wav"
-get breaks125/015_sdstckbr.wav "breaks/SDSTCK_125bpm.wav"
-get breaks125/016_bllstmp.wav  "breaks/BLLSTP_125bpm.wav"
+get breaks152/000_AMEN.WAV     "breaks/DIRT/AMEN_153bpm.wav"
+get breaks157/000_PLEAD.WAV    "breaks/DIRT/PLEAD_157bpm.wav"
+get breaks165/000_RAWCLN.WAV   "breaks/DIRT/RAWCLN_165bpm.wav"
+get breaks125/015_sdstckbr.wav "breaks/DIRT/SDSTCK_125bpm.wav"
+get breaks125/016_bllstmp.wav  "breaks/DIRT/BLLSTP_125bpm.wav"
 
 # Pre-chopped: a folder is one bank, its files the slices in name order.
 i=1
 while [ $i -le 32 ]; do
     n=$(printf "%03d_AMENCUT_%03d" $((i - 1)) $i)
-    get "amencutup/$n.wav" "breaks/AMENCUT_149bpm/$n.wav"
+    get "amencutup/$n.wav" "breaks/DIRT/AMENCUT_149bpm/$n.wav"
     i=$((i + 1))
 done
 for f in kick1 kick2 snare1 snare2 closedhh openhh ride crash perc1 perc2 hit1 hit2 hit3; do
-    get "jungle/jungle4$f.wav" "breaks/JUNGLE/$f.wav"
+    get "jungle/jungle4$f.wav" "breaks/DIRT/JUNGLE/$f.wav"
 done
 
 # Bass one-shots for the bass channel's sample voices.
@@ -49,4 +50,4 @@ for f in 000_deeep_n_low 001_fat_808_sub 002_fukubass2 003_glide_up_down_sub 004
     get "jungbass/$f.wav" "bass/$f.wav"
 done
 
-echo "samples in $APP/breaks and $APP/bass"
+echo "samples in $APP/breaks/DIRT and $APP/bass"
