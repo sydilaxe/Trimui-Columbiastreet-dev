@@ -48,7 +48,7 @@ jobs:
             z=build/ColumbiaStreet-$d.zip
             ls -l $z
             unzip -l $z | grep -q "Apps/ColumbiaStreet/columbia$"
-            unzip -l $z | grep -q "Apps/ColumbiaStreet/breaks/AMEN_153bpm.wav"
+            unzip -l $z | grep -q "Apps/ColumbiaStreet/breaks/DIRT/AMEN_153bpm.wav"
             # the self-updater needs these: the CA bundle for HTTPS, and VERSION and DEVICE for install.sh
             unzip -l $z | grep -q "Apps/ColumbiaStreet/cacert.pem"
             test "$(unzip -p $z Apps/ColumbiaStreet/VERSION)" = "$v"
@@ -63,7 +63,7 @@ jobs:
             unzip -l $z | grep -q "Columbia Street/mux_launch.sh$"
             unzip -l $z | grep -q "Columbia Street/wake_screen.sh$"
             unzip -l $z | grep -q "Columbia Street/glyph/columbiastreet.svg$"
-            unzip -l $z | grep -q "Columbia Street/breaks/AMEN_153bpm.wav"
+            unzip -l $z | grep -q "Columbia Street/breaks/DIRT/AMEN_153bpm.wav"
             unzip -l $z | grep -q "Columbia Street/cacert.pem"
             test "$(unzip -p $z "Columbia Street/VERSION")" = "$v"
             test "$(unzip -p $z "Columbia Street/DEVICE")" = $d
@@ -119,6 +119,7 @@ jobs:
           grep -q "^comp: .*(want over 6: 1)" $r
           grep -q "^generator: 199 seeds, 0 identical pairs, 0 out of range" $r
           grep -q "^save/load: 1, same 1, bpm 163.5, bits 7, slot D used 1" $r
+          grep -q "^sets: 5 found .*(want 1: 1)" $r
           grep -q "^bass voices: 24, 0 silent (want 0)" $r
           grep -q "^select: new beat 1, mutes kept 1, mixer kept 1; undo back 1, mutes kept 1" $r
           grep -q "^sync: bpm=140.0 following=1" $r

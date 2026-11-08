@@ -211,6 +211,9 @@ void euclid_permute(Cell *c);
 void song_default(void);
 void pattern_generate(Pattern *p, unsigned seed); /* a fresh jungle pattern */
 void song_clamp(void); /* after the banks change, keep params in range */
+/* another set of breaks swapped into banks[] (audio locked): the hits playing
+ * from the old samples stop, and the params come into range */
+void engine_banks_changed(void);
 int song_save(const char *path);
 int song_load(const char *path);
 

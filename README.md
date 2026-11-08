@@ -95,7 +95,7 @@ its switches again afterwards.
 
 ## The breaks
 
-`make` fetches a curated set into `dist/ColumbiaStreet/breaks` and `bass` from TidalCycles'
+`make` fetches a curated set into `dist/ColumbiaStreet/breaks/DIRT` and `bass` from TidalCycles'
 [Dirt-Samples](https://github.com/tidalcycles/Dirt-Samples), pinned to one commit, with
 `tools/fetch_samples.sh`:
 
@@ -112,13 +112,40 @@ from The Winstons' "Amen, Brother", and Dirt-Samples does not state a licence fo
 The release zip includes them, so check that this is acceptable to you before publishing
 one.
 
-### Your own breaks
+### Your own breaks: sets
 
-Drop any break into `Apps/ColumbiaStreet/breaks/` (Apache, Think, Funky Drummer...). A `.wav`
-file is a loop, sliced at its hits. Put the tempo in its name (`APACHE_115bpm.wav`) and the
-slices land on the 16th grid; without a tempo, it is guessed from the length. A folder of
-`.wav` files is a pre-chopped break, one slice per file in name order. Bass one-shots go in
-`bass/`; their pitch is detected on load. See the README.txt in each folder.
+Breaks come in **sets**, and one set plays at a time. Each folder in `Apps/ColumbiaStreet/breaks/`
+is a set: make a folder, fill it with `.wav` loops (Apache, Think, Funky Drummer...), and it is a
+set you can pick on the CHOP page. The curated breaks are the set `DIRT`. `.wav` files dropped
+straight into `breaks/` make one more set, `BREAKS`.
+
+```
+breaks/
+  DIRT/                  the curated set
+  HIP HOP/               a set of your own
+    APACHE_115bpm.wav    a loop, sliced at its hits
+    THINK_114bpm.wav
+    MYCHOP_170bpm/       a pre-chopped break: one slice per file
+      001.wav
+      002.wav
+```
+
+In a set, a `.wav` file is a loop, sliced at its hits. Put the tempo in its name
+(`APACHE_115bpm.wav`) and the slices land on the 16th grid; without a tempo, it is guessed from
+the length. A folder inside a set is a pre-chopped break, one slice per file in name order. Up to
+32 breaks load from a set. Sets are found when the app starts, so restart it after adding a
+folder. The set picked last is remembered (in `breakset.txt`).
+
+Switching set keeps each channel on the same BREAK number, now pointing into the new set, so a
+pattern plays on with the other set's breaks. Songs and slots remember breaks by name, so a song
+saved with one set finds its breaks again when that set is in.
+
+Before sets, a folder straight in `breaks/` was a pre-chopped break. Such a folder is now a set of
+its own, with each slice a break: move it into a set folder to have it as one break again. After
+an update, the old copies of the curated breaks outside `DIRT/` are removed on the first start
+(only files that match the ones in `DIRT/`).
+
+Bass one-shots go in `bass/`; their pitch is detected on load. See the README.txt in each folder.
 
 ## Controls
 
@@ -217,8 +244,11 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
   on or off, X / Y add or remove hits. Hold B and press up / down to change the length (1-32
   steps), or left / right to rotate. A tap of B rolls a random Euclidean rhythm.
 - **CHOP**: one break channel at a time (left / right). The waveform shows the bank's slices,
-  the ones this channel can pick, and the slice playing. Up / down picks a parameter, X / Y
-  change it, A plays the slice, B mutes the channel.
+  the ones this channel can pick, and the slice playing; the line under it the set and the
+  break. Up / down picks a parameter, X / Y change it, A plays the slice, B mutes the channel.
+  - **SET** (up from BREAK, under the waveform): the set of breaks, a folder in `breaks/` (see
+    [sets](#your-own-breaks-sets)). X / Y pick a set, A loads it. The beat plays on while it
+    loads and the new set comes in when it is ready.
   - **BREAK, SLICE**: the bank, and the slice to play.
   - **MODE**: FIX plays SLICE every hit. WALK steps through RANGE slices from SLICE, one per
     hit. RAND picks one of them at random. GRID plays the slice that falls on this step of the
@@ -509,7 +539,7 @@ SHA-256) into `third_party/mbedtls/` (not committed) and links in statically.
 | Path | Contents |
 | --- | --- |
 | `src/engine.c` | Sequencer, slice playback, channel effects, bass voices, bus, save / load |
-| `src/breaks.c` | WAV loading, onset slicing, bass pitch detection |
+| `src/breaks.c` | WAV loading, sets of breaks and switching them, onset slicing, bass pitch detection |
 | `src/ui.c` | Pages, input, drawing |
 | `src/gfx.c`, `src/font_data.h` | Framebuffer drawing and the font |
 | `src/sync.c` | Wi-Fi sync |
