@@ -1653,6 +1653,110 @@ int main(int argc, char **argv)
                armed && plays && grid_out && over && !repeats && kinds >= 5 && late && off && next_bar && stop_clears &&
                    stopped && tap && combo);
     }
+    /* ---- the one-touch remix (L3 on the Brick Pro): timed as the fill, from
+     * the next 16th to the bar line; the pattern plays on, the other channels
+     * hit for hit, and the snare channel gains a few flams, ghosts and at most
+     * one roll (never more than two flams and three ghosts); again calls it
+     * off; it and the fill call each other off; stopped, nothing; R2 + L3
+     * still lets the kept groove go. remix.wav: two bars, the remix in the first */
+    {
+        static float b2[64];
+        uint32_t plain[NV], mixed[NV];
+        /* a bar as the pattern plays it, then the same bar remixed */
+        for (int pass = 0; pass < 2; pass++) {
+            song_default();
+            engine_init(RATE);
+            engine_set_playing(0);
+            engine_set_playing(1);
+            live.step = 0;
+            while (live.step < 15)
+                render_mono(b2, 64);
+            if (pass)
+                ui_l3();
+            uint32_t *d = pass ? mixed : plain;
+            for (int v = 0; v < NV; v++)
+                d[v] = live.trig_count[v];
+            while (live.step < 32)
+                render_mono(b2, 64);
+            for (int v = 0; v < NV; v++)
+                d[v] = live.trig_count[v] - d[v];
+            engine_set_playing(0);
+        }
+        int armed_ok = 1, others = 1;
+        for (int v = 0; v < NV; v++)
+            if (v != 1 && mixed[v] != plain[v])
+                others = 0;
+        int extra = (int)mixed[1] - (int)plain[1];
+        /* many remixes, one a bar: how much they add, and that they add it */
+        song_default();
+        engine_init(RATE);
+        engine_set_playing(0);
+        engine_set_playing(1);
+        live.step = 0;
+        while (live.step < 1)
+            render_mono(b2, 64);
+        int most_flams = 0, most_ghosts = 0, flams = 0, ghosts = 0, rolls = 0, over = 1, n = 24;
+        for (int k = 0; k < n; k++) {
+            int from = live.step + 1;
+            ui_l3();
+            armed_ok &= live.remix_from == from && live.remix_to == (from & ~15) + 16 && live.remix_snare == 1;
+            rolls += live.remix_roll >= 0;
+            int stop = live.remix_to;
+            while (live.step < stop - 1)
+                render_mono(b2, 64);
+            while (live.remix_to > 0 && live.step < stop + 1)
+                render_mono(b2, 64);
+            over &= live.remix_to == 0;
+            flams += live.remix_flams > 0, ghosts += live.remix_ghosts > 0;
+            most_flams = live.remix_flams > most_flams ? live.remix_flams : most_flams;
+            most_ghosts = live.remix_ghosts > most_ghosts ? live.remix_ghosts : most_ghosts;
+        }
+        ui_l3();
+        ui_l3();
+        int off = live.remix_to == 0;
+        ui_l3();
+        ui_fill();
+        int fill_wins = live.remix_to == 0 && live.fill_to > 0;
+        ui_l3();
+        int remix_wins = live.fill_to == 0 && live.remix_to > 0;
+        engine_set_playing(0);
+        int stop_clears = live.remix_to == 0;
+        ui_l3();
+        int stopped = live.remix_to == 0;
+        song.groove_lock = 40;
+        ui_button(BTN_R2, 1);
+        ui_l3();
+        ui_button(BTN_R2, 0);
+        int r2_groove = song.groove_lock == 0 && live.remix_to == 0;
+        /* to listen to */
+        {
+            song_default();
+            engine_init(RATE);
+            engine_set_playing(0);
+            engine_set_playing(1);
+            live.step = 0;
+            int frames = (int)(2 * 16 * RATE * 15.f / song.bpm) / 512 * 512 + 512;
+            int16_t *pcm = malloc(sizeof(int16_t) * 2 * frames);
+            engine_render(pcm, 512);
+            ui_l3();
+            for (int done = 512; done < frames; done += 512)
+                engine_render(pcm + 2 * done, 512);
+            engine_set_playing(0);
+            char wp[600];
+            snprintf(wp, sizeof wp, "%s/remix.wav", out);
+            write_wav(wp, pcm, frames);
+            free(pcm);
+        }
+        int ok = armed_ok && others && extra >= 0 && extra <= 4 && over && most_flams <= 2 && most_ghosts <= 3 &&
+                 flams > n / 4 && ghosts > n / 4 && rolls > n / 4 && rolls < n && off && fill_wins && remix_wins &&
+                 stop_clears && stopped && r2_groove;
+        printf("remix: armed from the next 16th to the bar line %d, the other channels as the pattern %d, snare +%d hits, "
+               "over at the bar line %d; %d remixes: flams in %d (most %d), ghosts in %d (most %d), a roll in %d; "
+               "again off %d, the fill calls it off %d and it the fill %d, stop clears %d, stopped nothing %d, "
+               "R2 + L3 the groove %d (want 1: %d)\n",
+               armed_ok, others, extra, over, n, flams, most_flams, ghosts, most_ghosts, rolls, off, fill_wins,
+               remix_wins, stop_clears, stopped, r2_groove, ok);
+    }
     /* ---- the groove's feel on the SONG page's GROOVE row: SWING delays the
      * 16ths between the 8ths (75%: half a 16th) and leaves the rest on the
      * grid; BREATH softens all but the beats, swells into the fourth bar and

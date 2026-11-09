@@ -1052,12 +1052,73 @@ static void fill_step(int s)
     }
 }
 
+/* The remix: the pattern as it is, its snare channel played the way a
+ * drummer would on a second pass. Kept tasteful: at most two flams (likelier
+ * on the backbeat), three ghost notes on the e and the a next to a hit, and
+ * sometimes one short roll, on the last hit before the bar line or as a
+ * pickup into it. Only plain hits change; rolls and ALT steps play as set. */
+static int plain_hit(int v, int s) { return groove_flags(v, s) == TRIG_HIT; }
+
+/* 1 when the remix played step s on its channel itself (flags: the pattern's) */
+static int remix_play(int v, int s, int flags)
+{
+    BrkCh *c = &brk[v];
+    const int *P = song.pat.param[v];
+    const Bank *b = chan_bank(v);
+    if (!b || b->nslices < 1 || song.pat.mute[v] || P[B_MODE] == MODE_GRID || c->rat_left > 0)
+        return 0;
+    int i = s & 15;
+    unsigned seed = (unsigned)live.remix_seed;
+    float h = groove_hash(v, i, seed), h2 = groove_hash(v, i, seed ^ 0x7f4a7c15u);
+    float semis = (float)P[B_PITCH];
+    if (s == live.remix_roll && (flags == TRIG_HIT || !flags)) {
+        /* three 48ths swelling into the hit, or softer as a pickup */
+        int slice = flags ? ((brk_pick(v, s) % b->nslices) + b->nslices) % b->nslices : live.slice[v];
+        float vel = (flags ? 0.55f : 0.32f) * step_gain;
+        brk_play(v, slice, 0, semis, vel);
+        c->rat_left = 2;
+        c->rat_int = (int)(sps / 3);
+        if (c->rat_int < 32)
+            c->rat_int = 32;
+        c->rat_cd = c->rat_int;
+        c->rat_slice = slice, c->rat_rev = 0, c->rat_semis = semis;
+        c->rat_vel = vel;
+        live.trig_count[v]++;
+        return 1;
+    }
+    if (flags == TRIG_HIT) {
+        float p = (i == 4 || i == 12) ? 0.45f : (i & 1) ? 0.1f : 0.22f;
+        if (live.remix_flams >= 2 || h >= p)
+            return 0;
+        /* a flam: a quiet grace note, the hit 25 ms after it */
+        int slice = ((brk_pick(v, s) % b->nslices) + b->nslices) % b->nslices;
+        float vel = step_gain;
+        brk_play(v, slice, 0, semis, 0.28f);
+        c->rat_left = 1;
+        c->rat_int = (int)(0.025f * sr);
+        c->rat_cd = c->rat_int;
+        c->rat_slice = slice, c->rat_rev = 0, c->rat_semis = semis;
+        c->rat_vel = (vel - 0.35f) / 0.65f; /* the ratchet nudges it toward 1 */
+        live.remix_flams++;
+        live.trig_count[v]++;
+        return 1;
+    }
+    if (!flags && (i & 1) && live.remix_ghosts < 3 && (plain_hit(v, s - 1) || plain_hit(v, s + 1)) &&
+        s + 1 != live.remix_roll && h < 0.42f) {
+        brk_ghost(v, 0.18f + 0.1f * h2);
+        live.remix_ghosts++;
+        return 1;
+    }
+    return 0;
+}
+
 /* SWING (0..25: 50% to 75%) delays the 16ths between the 8ths, up to half a
  * 16th; BREATH (0..100) leans every hit but the beats a little late, more
  * on some than others (the same every bar), up to 6% of a 16th */
-static int defer_s = -1, defer_fill;
+static int defer_s = -1, defer_fill; /* defer_fill: play_step's mode */
 static double defer_cd;
-static void play_step(int s, int filling);
+enum { STEP_PLAIN, STEP_FILL, STEP_REMIX };
+static void play_step(int s, int mode);
 
 static double step_delay(int s)
 {
@@ -1100,23 +1161,28 @@ static void fire_step(void)
     }
     if (s % 32 == 0)
         bass.riff_pos = 0;
-    int filling = live.fill_to > 0 && s >= live.fill_from && s < live.fill_to;
+    int mode = live.fill_to > 0 && s >= live.fill_from && s < live.fill_to       ? STEP_FILL
+               : live.remix_to > 0 && s >= live.remix_from && s < live.remix_to ? STEP_REMIX
+                                                                                 : STEP_PLAIN;
     if (live.fill_to > 0 && s >= live.fill_to)
         live.fill_to = 0; /* over at the bar line */
+    if (live.remix_to > 0 && s >= live.remix_to)
+        live.remix_to = 0;
     /* swing and BREATH's lean move the hits a little after the step; the
      * step itself (the transport, the clock, the sync) stays on the grid */
     if (defer_s >= 0)
         play_step(defer_s, defer_fill);
     double late = step_delay(s);
     if (late >= 1.0) {
-        defer_s = s, defer_fill = filling, defer_cd = late;
+        defer_s = s, defer_fill = mode, defer_cd = late;
         return;
     }
-    play_step(s, filling);
+    play_step(s, mode);
 }
 
-static void play_step(int s, int filling)
+static void play_step(int s, int mode)
 {
+    int filling = mode == STEP_FILL;
     defer_s = -1;
     step_gain = engine_step_gain(s);
     if (filling) {
@@ -1136,6 +1202,8 @@ static void play_step(int s, int filling)
             (v == live.fill_snare || v == live.fill_kick || song.pat.param[v][B_MODE] == MODE_GRID))
             continue;
         int flags = groove_flags(v, s);
+        if (mode == STEP_REMIX && v == live.remix_snare && remix_play(v, s, flags))
+            continue;
         if (!flags) {
             float g = groove_ghost_now();
             float gv = g != 0.f ? groove_ghost_at(v, s) : 0.f;
@@ -1162,6 +1230,7 @@ void engine_set_playing(int on)
     }
     if (!on) {
         live.fill_to = 0;
+        live.remix_to = 0;
         defer_s = -1;
         bass.gate = 0;
         for (int v = 0; v < NBRK; v++) {
@@ -1181,6 +1250,7 @@ int engine_fill(void)
         return -1;
     }
     /* from the next 16th to the bar line: on the bar's last 16th, the next bar whole */
+    live.remix_to = 0;
     live.fill_from = next_step, live.fill_to = (next_step & ~15) + 16;
     static unsigned fills;
     int shape = (int)(groove_hash(0, 0, 0x9b05688cu + ++fills * 0x632be5abu) * NFILL);
@@ -1193,6 +1263,34 @@ int engine_fill(void)
     if (live.fill_snare < 0)
         live.fill_snare = 1;
     live.fill_kick = fill_channel(TAG_KICK, live.fill_snare);
+    return 1;
+}
+
+int engine_remix(void)
+{
+    if (!live.playing)
+        return 0;
+    if (live.remix_to > 0) {
+        live.remix_to = 0;
+        return -1;
+    }
+    live.fill_to = 0;
+    live.remix_from = next_step, live.remix_to = (next_step & ~15) + 16;
+    static unsigned remixes;
+    live.remix_seed = (int)(0x2545f491u + ++remixes * 0x9e3779b9u);
+    live.remix_flams = live.remix_ghosts = 0;
+    int v = live.remix_snare = fill_channel(TAG_SNARE, -1);
+    /* one roll in a little over half of them: on the last plain hit from
+     * the bar's 13th 16th, else as a pickup on an empty last 16th */
+    live.remix_roll = -1;
+    if (v >= 0 && groove_hash(v, 0, (unsigned)live.remix_seed ^ 0x1f83d9abu) < 0.55f) {
+        int bar = live.remix_to - 16, lo = live.remix_from > bar + 12 ? live.remix_from : bar + 12;
+        for (int s = live.remix_to - 1; s >= lo && live.remix_roll < 0; s--)
+            if (plain_hit(v, s))
+                live.remix_roll = s;
+        if (live.remix_roll < 0 && live.remix_from <= bar + 15 && !groove_flags(v, bar + 15))
+            live.remix_roll = bar + 15;
+    }
     return 1;
 }
 
