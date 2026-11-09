@@ -15,8 +15,7 @@ mkdir -p "$T/rel/Columbia Street/breaks/CHOP" $T/bad $T/app/breaks
 # the release: launch.sh, mux_launch.sh and friends, a binary, a loop, a pre-chopped
 # bank, and a columbia.sav that must never reach the user's folder
 R="$T/rel/Columbia Street"
-cp dist/ColumbiaStreet/launch.sh dist/ColumbiaStreet/config.json dist/ColumbiaStreet/icon.png \
-    dist/ColumbiaStreet/cacert.pem dist/mustardos/mux_launch.sh "$R/"
+cp dist/ColumbiaStreet/launch.sh dist/ColumbiaStreet/cacert.pem dist/mustardos/mux_launch.sh "$R/"
 cp build/cs_update "$R/columbia"
 echo 9.9.9 > "$R/VERSION"
 head -c 300000 /dev/urandom > "$R/breaks/LOOP_150bpm.wav"
