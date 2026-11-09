@@ -2,7 +2,7 @@
 """Local stand-in for GitHub's releases, for testing Columbia Street's self-update without the
 internet. From RadioScan.
 
-Serves DIR/ColumbiaStreet-brick.zip (or each --asset, which can be given more than once) as the
+Serves DIR/ColumbiaStreet-mustardos-brick.muxapp (or each --asset, which can be given more than once) as the
 assets of a release tagged TAG, the way GitHub does:
 the API's latest-release JSON, then a download link that redirects (with a ~1000-character
 signed URL) to the file itself.
@@ -26,7 +26,7 @@ def main():
     ap.add_argument("--tag", default="v9.9.9")
     ap.add_argument("--asset", action="append")
     args = ap.parse_args()
-    assets = args.asset or ["ColumbiaStreet-brick.zip"]
+    assets = args.asset or ["ColumbiaStreet-mustardos-brick.muxapp"]
     base = f"http://127.0.0.1:{args.port}"
 
     class Handler(BaseHTTPRequestHandler):

@@ -1,5 +1,5 @@
-Columbia Street, a five-channel jungle sequencer for the TrimUI Brick, Brick Hammer and Brick Pro (TrimUI OS
-and MustardOS).
+Columbia Street, a five-channel jungle sequencer for the TrimUI Brick, Brick Hammer and Brick Pro running
+MustardOS.
 
 **Install on MustardOS**
 
@@ -7,18 +7,15 @@ Copy `ColumbiaStreet-mustardos-brick.muxapp` (Brick, Brick Hammer) or `ColumbiaS
 (Brick Pro) into the `ARCHIVE` folder of the first SD card, install it from **Applications → Archive Manager**, then
 open **Applications → Columbia Street**. Press MENU to quit.
 
-**Install on TrimUI OS**
-
-Unzip `ColumbiaStreet-brick.zip` (Brick, Brick Hammer) or `ColumbiaStreet-brickpro.zip` (Brick Pro) at the
-root of the SD card (it contains `Apps/ColumbiaStreet/`), then open **Apps → Columbia Street**. Press MENU to
-quit.
-
-Or, on either firmware, with the TrimUI's SSH server on, run this on a computer on the same network (on TrimUI
-OS, add `CS_DEVICE=brickpro` before `bash` the first time on a Brick Pro):
+Or, with the TrimUI's SSH server on, run this on a computer on the same network:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/main/install.sh | bash
 ```
+
+**Change: MustardOS only**
+- Columbia Street is now built only for MustardOS, on the Brick (and Brick Hammer) and the Brick Pro. The TrimUI OS
+  zips are no longer released; a copy installed from one won't find its update, so install the `.muxapp` instead.
 
 **New: the Brick Pro's LEDs, each on its own**
 - Both stick rings light (only the left one did): each points where its stick is pushed, the right one in the
@@ -52,7 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/
 
 **New: MustardOS**
 - Packages for MustardOS on the Brick, Brick Hammer and Brick Pro, installed from the Archive Manager. The app
-  reads MustardOS's controller, so every button (and the Brick Pro's sticks) works as on TrimUI OS, and it
+  reads MustardOS's controller, so every button (and the Brick Pro's sticks) works, and it
   updates itself from the MustardOS package.
 
 **New on TrimUI**
@@ -64,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/
 - **USB audio:** a USB sound card or DAC takes over the output while it is plugged in.
 - **Brick Pro:** the left stick closes the bus low-pass by hand; the right stick plays repeat 1/8, repeat 1/16,
   reverse and tape stop; L3 taps the tempo, R3 makes a new beat.
-- **Updates itself** from this repo's releases, each device and firmware fetching its own package.
+- **Updates itself** from this repo's releases, each device fetching its own package.
 
 **From the Miyoo version — 0.3.0**
 - Updates itself: a few seconds after it starts, Columbia Street asks GitHub for the latest release and, when
@@ -81,9 +78,9 @@ curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/
   d-pad repeat, reverse and tape stop.
 - SELECT makes a new jungle beat (R2+SELECT undoes it); 8 pattern slots switch on the bar line; Wi-Fi sync with
   HI5 and Jaffedrone.
-- Your own breaks, in sets: make a folder in `Apps/ColumbiaStreet/breaks/`, fill it with WAV loops (with the
+- Your own breaks, in sets: make a folder in the app folder's `breaks/`, fill it with WAV loops (with the
   tempo in their names, e.g. `APACHE_115bpm.wav`), and pick it as a set on the CHOP page (up from BREAK, X / Y,
   then A). The curated breaks are the set `DIRT`.
 
-If you hear crackles, set `CS_BUFFER=1024` in `launch.sh` in the app folder (`Apps/ColumbiaStreet` on TrimUI OS,
-`MUOS/application/Columbia Street` on MustardOS). The log is written to `log.txt` in the same folder.
+If you hear crackles, set `CS_BUFFER=1024` in `launch.sh` in the app folder
+(`MUOS/application/Columbia Street`). The log is written to `log.txt` in the same folder.

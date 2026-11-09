@@ -963,7 +963,6 @@ int main(int argc, char **argv)
         link_follow_start();
     }
     int update_auto = env_int("CS_UPDATE", 1) != 0, update_tries = 0;
-    update_detect_package("."); /* TrimUI OS's zip, or MustardOS's .muxapp */
     if (update_auto) {
         net_init(CA_BUNDLE);
         ui_set_update(update_status(), install_update);

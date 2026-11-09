@@ -21,17 +21,7 @@
 static UpdateStatus us;
 static char install_dir[1024];
 /* "/" and the release file's name, so the name can be matched at the end of a URL */
-static const char *asset_path = "/" CS_ASSET, *zip_dir = CS_ZIP_DIR;
-
-int update_detect_package(const char *app_dir)
-{
-    char path[1100];
-    snprintf(path, sizeof path, "%s/" CS_MUSTARD_LAUNCHER, app_dir);
-    int mustard = access(path, F_OK) == 0;
-    asset_path = mustard ? "/" CS_ASSET_MUSTARD : "/" CS_ASSET;
-    zip_dir = mustard ? CS_ZIP_DIR_MUSTARD : CS_ZIP_DIR;
-    return mustard;
-}
+static const char *const asset_path = "/" CS_ASSET, *const zip_dir = CS_ZIP_DIR;
 
 const char *update_asset(void) { return asset_path + 1; }
 
