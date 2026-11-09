@@ -35,7 +35,7 @@ VERDEF := -DCS_VERSION='"$(VERSION)"'
 
 MAGICK := $(shell command -v magick 2>/dev/null || echo convert)
 
-all: build/brick/columbia build/brickpro/columbia $(APP)/icon.png $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt samples
+all: build/brick/columbia build/brickpro/columbia $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt samples
 
 # changes only when the version does, so a new VERSION= rebuilds what has it compiled in
 build/version: FORCE
@@ -54,9 +54,6 @@ $(SAMPLES): tools/fetch_samples.sh
 
 src/font_data.h: tools/mkfont.py
 	python3 tools/mkfont.py /usr/share/fonts/google-noto/NotoSansMono-Bold.ttf $@
-
-$(APP)/icon.png: tools/mkicon.py
-	python3 tools/mkicon.py $@
 
 # a stand-in for the device's libSDL2-2.0.so.0, to link against (the device has the real one)
 build/sdl2/libSDL2-2.0.so.0: tools/mksdlstub.py src/main_trimui.c
@@ -124,7 +121,7 @@ version:
 # The app folder and binary, plus mux_launch.sh (how MustardOS starts an app) and the list glyph.
 MUX := dist/mustardos
 MUX_APP := Columbia Street
-build/ColumbiaStreet-mustardos-%.muxapp: build/%/columbia $(APP)/icon.png $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt $(SAMPLES) $(MUX)/mux_launch.sh $(MUX)/wake_screen.sh $(MUX)/glyph/columbiastreet.svg
+build/ColumbiaStreet-mustardos-%.muxapp: build/%/columbia $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt $(SAMPLES) $(MUX)/mux_launch.sh $(MUX)/wake_screen.sh $(MUX)/glyph/columbiastreet.svg
 	rm -rf build/mux-$* $@
 	mkdir -p "build/mux-$*/$(MUX_APP)"
 	cp -r $(APP)/. "build/mux-$*/$(MUX_APP)/"
@@ -142,7 +139,7 @@ package: build/ColumbiaStreet-mustardos-brick.muxapp build/ColumbiaStreet-mustar
 DEVICE ?= brick
 INSTALL_DIR = $(SD)/MUOS/application/$(MUX_APP)
 INSTALL_ROOT = $(SD)/MUOS
-install: build/$(DEVICE)/columbia $(APP)/icon.png $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt samples
+install: build/$(DEVICE)/columbia $(APP)/VERSION $(APP)/LICENSE-mbedtls.txt samples
 	@test -n "$(SD)" || (echo "usage: make install SD=/path/to/mounted/sdcard [DEVICE=brickpro]" && exit 1)
 	@test -d "$(INSTALL_ROOT)" || (echo "$(INSTALL_ROOT) not found — is this the MustardOS card?" && exit 1)
 	mkdir -p "$(INSTALL_DIR)"

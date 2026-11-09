@@ -1,12 +1,11 @@
 /* TrimUI Brick, Brick Hammer and Brick Pro front-end: SDL2 as shipped with
- * TrimUI OS or MustardOS (Allwinner A133P: four Cortex-A53 cores, 1 GB, a
- * 1024x768 screen). The same binary runs on both: it reads the buttons of
- * whichever controller the firmware gives it. The 640x480 pages are drawn as
+ * MustardOS (Allwinner A133P: four Cortex-A53 cores, 1 GB, a 1024x768
+ * screen), reading the buttons of MustardOS's controller. The 640x480 pages are drawn as
  * on the Miyoo and scaled 1.6x to fill the screen. As in Jaffedrone's TrimUI port: the TrimUI's joystick
  * buttons, USB audio output with hot-plug, USB MIDI clock, memory locked.
  *
  * Built twice: CS_BRICKPRO adds the Brick Pro's two analog sticks (and makes
- * the self-updater fetch the Brick Pro's zip). */
+ * the self-updater fetch the Brick Pro's package). */
 #define _GNU_SOURCE
 #include <SDL2/SDL.h>
 #include <fcntl.h>
@@ -189,23 +188,21 @@ static void audio_hotplug(void)
 
 /* ------------------------------------------------------------- input */
 
-/* The buttons, as SDL sees them. The d-pad is hat 0 everywhere.
- *   TrimUI OS (NextUI and MinUI agree): the TrimUI's own controller. L2 and R2
- *     are axes 2 and 5; the Brick Pro's sticks are axes 0, 1 and 3, 4.
- *   MustardOS: its "muOS-Keys" controller, numbered as in MustardOS's own
- *     controller maps (device/tui-brick*), which differ between the Brick and
- *     the Brick Pro. L2 and R2 are buttons; the Brick Pro's sticks are axes
- *     0, 1 and 2, 3.
+/* The buttons, as SDL sees them: MustardOS's "muOS-Keys" controller,
+ * numbered as in MustardOS's own controller maps (device/tui-brick*), which
+ * differ between the Brick and the Brick Pro. The d-pad is hat 0, L2 and R2
+ * are buttons, the Brick Pro's sticks are axes 0, 1 and 2, 3. Any other
+ * controller (the TrimUI's own one underneath it) is not read, so a press
+ * can't arrive twice.
  * F1 and F2 (the function buttons on the front, mute scenes M1 and M2): on
- * the Brick they are the buttons TrimUI OS and MustardOS call L3 and R3 (it
- * has no sticks to click); on the Brick Pro, TrimUI OS's 11 and 12 (NextUI's
- * L4 and R4), while 9 and 10 are the sticks' clicks. MustardOS's Brick Pro
- * sends them as 0 and 1 (its keys F1 and F2, which SDL numbers first); 2 and
- * 3 are volume down and up, left to MustardOS, 4 is HOME (half time here), 16
- * and 17 the sticks' clicks (MustardOS's input/devices/tui-brick-pro). CS_JOYMAP=F1=n,F2=n
- * sets others (log.txt names the buttons it doesn't know). */
-enum { PAD_TRIMUI, PAD_MUOS_BRICK, PAD_MUOS_BRICKPRO, PAD_KINDS };
-static const char *const pad_names[PAD_KINDS] = {"TrimUI OS", "MustardOS (Brick)", "MustardOS (Brick Pro)"};
+ * the Brick they are the buttons MustardOS calls L3 and R3 (it has no sticks
+ * to click). MustardOS's Brick Pro sends them as 0 and 1 (its keys F1 and F2,
+ * which SDL numbers first); 2 and 3 are volume down and up, left to
+ * MustardOS, 4 is HOME (half time here), 16 and 17 the sticks' clicks
+ * (MustardOS's input/devices/tui-brick-pro). CS_JOYMAP=F1=n,F2=n sets others
+ * (log.txt names the buttons it doesn't know). */
+enum { PAD_MUOS_BRICK, PAD_MUOS_BRICKPRO, PAD_KINDS };
+static const char *const pad_names[PAD_KINDS] = {"MustardOS (Brick)", "MustardOS (Brick Pro)"};
 
 /* each pad's button numbers, in the order of the BTN_ enum (ending F1, F2),
  * then L3 and R3, then HALF: half time on and off. HALF is the HOME key on
@@ -219,24 +216,23 @@ static const char *const pad_names[PAD_KINDS] = {"TrimUI OS", "MustardOS (Brick)
 static const signed char pad_buttons[PAD_KINDS][JB_COUNT] = {
 #ifdef CS_BRICKPRO
     /*                     UP  DN  LT  RT  A  B  X  Y  L1  R1  L2  R2  SEL STA MENU F1  F2  L3  R3  HALF */
-    [PAD_TRIMUI]        = {-1, -1, -1, -1, 1, 0, 3, 2, 4,  5,  -1, -1, 6,  7,  8,   11, 12, 9,  10, -1},
     [PAD_MUOS_BRICK]    = {-1, -1, -1, -1, 5, 4, 6, 7, 8,  9,  10, 11, 12, 13, 14,  15, 16, -1, -1, -1},
     [PAD_MUOS_BRICKPRO] = {-1, -1, -1, -1, 6, 5, 7, 8, 9,  10, 11, 12, 13, 14, 15,  0,  1,  16, 17, 4},
 #else
-    [PAD_TRIMUI]        = {-1, -1, -1, -1, 1, 0, 3, 2, 4,  5,  -1, -1, 6,  7,  8,   9,  10, -1, -1, -1},
     [PAD_MUOS_BRICK]    = {-1, -1, -1, -1, 5, 4, 6, 7, 8,  9,  10, 11, 12, 13, 14,  15, 16, -1, -1, -1},
     [PAD_MUOS_BRICKPRO] = {-1, -1, -1, -1, 6, 5, 7, 8, 9,  10, 11, 12, 13, 14, 15,  0,  1,  16, 17, 4},
 #endif
 };
 
-/* what each pad's axes do */
-enum { AX_NONE, AX_L2, AX_R2, AX_LX, AX_LY, AX_RX, AX_RY };
-#define PAD_AXES 6
+#ifdef CS_BRICKPRO
+/* what each pad's axes do: the Brick Pro's sticks */
+enum { AX_NONE, AX_LX, AX_LY, AX_RX, AX_RY };
+#define PAD_AXES 4
 static const unsigned char pad_axes[PAD_KINDS][PAD_AXES] = {
-    [PAD_TRIMUI] = {AX_LX, AX_LY, AX_L2, AX_RX, AX_RY, AX_R2},
     [PAD_MUOS_BRICK] = {AX_NONE},
     [PAD_MUOS_BRICKPRO] = {AX_LX, AX_LY, AX_RX, AX_RY},
 };
+#endif
 
 /* joy_map[pad][SDL button]: a BTN_, JB_L3 / JB_R3, or -1 */
 static int joy_map[PAD_KINDS][32];
@@ -294,12 +290,12 @@ static int pad_product(SDL_Joystick *j)
 }
 
 /* MustardOS's controller: named muOS-Keys, vendor 0x756d ("mu"); product 2 on
- * the Brick and Brick Hammer, 3 on the Brick Pro */
+ * the Brick and Brick Hammer, 3 on the Brick Pro. -1 for any other. */
 static int pad_kind(SDL_Joystick *j)
 {
     const char *name = SDL_JoystickName(j);
     if (!(name && strcasestr(name, "muos")) && pad_vendor(j) != 0x756d)
-        return PAD_TRIMUI;
+        return -1;
     switch (pad_product(j)) {
     case 2: return PAD_MUOS_BRICK;
     case 3: return PAD_MUOS_BRICKPRO;
@@ -311,20 +307,13 @@ static int pad_kind(SDL_Joystick *j)
 #endif
 }
 
-/* which map an event uses, or -1 to ignore it: when MustardOS's controller is
- * there, it alone is read, so a press can't arrive twice through the TrimUI's
- * own controller underneath it */
+/* which map an event uses, or -1 to ignore it (not MustardOS's controller) */
 static int event_pad(SDL_JoystickID id)
 {
-    int muos = 0, kind = -1;
-    for (int i = 0; i < npads; i++) {
-        muos |= pads[i].kind != PAD_TRIMUI;
+    for (int i = 0; i < npads; i++)
         if (pads[i].id == id)
-            kind = pads[i].kind;
-    }
-    if (kind < 0)
-        return PAD_TRIMUI; /* not seen opening: as before */
-    return muos && kind == PAD_TRIMUI ? -1 : kind;
+            return pads[i].kind;
+    return -1;
 }
 
 static int map_key(SDL_Keycode k)
@@ -360,17 +349,6 @@ static void on_hat(int v)
         if ((v ^ hat_was) & bits[i])
             ui_button(btn[i], (v & bits[i]) != 0);
     hat_was = v;
-}
-
-/* L2 and R2 are axes: pressed past halfway, let go below a quarter */
-static int trig_down[2];
-static void on_trigger(int which, int value)
-{
-    int down = trig_down[which] ? value > 8192 : value > 16384;
-    if (down != trig_down[which]) {
-        trig_down[which] = down;
-        ui_button(which ? BTN_R2 : BTN_L2, down);
-    }
 }
 
 #ifdef CS_BRICKPRO
@@ -577,9 +555,9 @@ static void open_joysticks(void)
         int kind = pad_kind(j);
         if (npads < MAX_PADS)
             pads[npads].id = id, pads[npads].kind = kind, npads++;
-        fprintf(stderr, "controller %d: %s (%04x:%04x), %d buttons, %d axes, %d hats: %s buttons\n", i,
+        fprintf(stderr, "controller %d: %s (%04x:%04x), %d buttons, %d axes, %d hats: %s\n", i,
                 SDL_JoystickName(j), pad_vendor(j), pad_product(j), SDL_JoystickNumButtons(j),
-                SDL_JoystickNumAxes(j), SDL_JoystickNumHats(j), pad_names[kind]);
+                SDL_JoystickNumAxes(j), SDL_JoystickNumHats(j), kind >= 0 ? pad_names[kind] : "not read");
     }
 }
 
@@ -624,19 +602,17 @@ static void on_event(const SDL_Event *e)
         if (e->jhat.hat == 0 && event_pad(e->jhat.which) >= 0)
             on_hat(e->jhat.value);
         break;
+#ifdef CS_BRICKPRO
     case SDL_JOYAXISMOTION: {
         int pad = event_pad(e->jaxis.which);
         int role = pad >= 0 && e->jaxis.axis < PAD_AXES ? pad_axes[pad][e->jaxis.axis] : AX_NONE;
-        if (role == AX_L2 || role == AX_R2)
-            on_trigger(role == AX_R2, e->jaxis.value);
-#ifdef CS_BRICKPRO
-        else if (role != AX_NONE) {
+        if (role != AX_NONE) {
             stick[role] = deadzone(e->jaxis.value);
             sticks_apply();
         }
-#endif
         break;
     }
+#endif
     case SDL_JOYDEVICEADDED:
         open_joysticks();
         break;
@@ -747,7 +723,7 @@ static void present(void)
     static int frames;
     /* opaque: the page is drawn with the alpha byte left at 0, and SDL copies
      * it to the screen as it is. MustardOS's display shows the screen's
-     * alpha, so a picture with alpha 0 is black there (TrimUI OS ignores it). */
+     * alpha, so a picture with alpha 0 is black there (other firmwares ignore it). */
     for (int i = 0; i < SCREEN_W * SCREEN_H; i++)
         fb[i] |= 0xff000000u;
     if (screen_reset) {

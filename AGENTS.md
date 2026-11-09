@@ -17,7 +17,7 @@ samples load on a thread while the loading screen keeps being presented. `make t
 `build/test` and prints the engine checks. Without zig on the path, `pip install ziglang==0.14.1`.
 
 The platform layer is `src/main_trimui.c` (SDL2: video scaled 1.6x from the 640x480 pages, the
-buttons of MustardOS's "muOS-Keys" controller (or the TrimUI's own one), found at run time, USB audio
+buttons of MustardOS's "muOS-Keys" controller (the Brick's or the Brick Pro's numbering, found at run time), USB audio
 with hot-plug, the sticks) and `src/midi.c` (USB MIDI clock in
 and out through ALSA raw MIDI), with `src/link.c` (the clock link between Bricks: a follower's bottom
 port as a USB gadget through configfs and FunctionFS, found and driven by the leader through usbfs;

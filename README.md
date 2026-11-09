@@ -311,7 +311,7 @@ R2 + the d-pad wins over the right stick while both are held.
 **Half time** is the HOME key on the left, under the volume keys (MustardOS's button 4; the volume keys are 2 and 3). It
 halves the tempo (a 1/2 badge in the header); a second press brings back the tempo it was, or
 doubles a tempo changed meanwhile. The song is saved at the full tempo, and remembers half time:
-it loads in half time if it was saved in it. On another firmware,
+it loads in half time if it was saved in it. On the Brick,
 `CS_JOYMAP=HALF=n` in `launch.sh` puts it on button n (`log.txt` names the buttons it doesn't use).
 
 The groove changes the steps, never the cells: let go, and the pattern plays as programmed again.
@@ -491,7 +491,7 @@ with STEREO. Songs saved by v0.1 load in STEREO.
 
 You need [zig](https://ziglang.org/) 0.14 for the cross-compile: `zig` on the path, `ZIG=...`, or
 `pip install ziglang==0.14.1` (the Makefile then uses `python3 -m ziglang`). You also need `curl`,
-`bzip2`, `zip`, `python3` (with Pillow for the icon), and for `make test` a host C compiler and
+`bzip2`, `zip`, `python3`, and for `make test` a host C compiler and
 ImageMagick.
 
 ```sh
