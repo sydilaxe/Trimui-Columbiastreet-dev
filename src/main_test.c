@@ -1450,7 +1450,7 @@ int main(int argc, char **argv)
     /* ---- song files from the SONG page: B saves the set (B twice over one
      * already there), A loads it, now when stopped and on the next SWITCH ON
      * while playing; the output and sync settings stay the device's; half
-     * time stays on */
+     * time comes back as it was saved */
     {
         char sd[600], f3[700];
         snprintf(sd, sizeof sd, "%s/songs", out);
@@ -1512,15 +1512,26 @@ int main(int argc, char **argv)
         int switched = waits && in_at == 8 && song.pat.param[1][B_PITCH] == 7;
         engine_set_playing(0);
         ui_tick(10);
-        /* half time stays on, at half the song's tempo */
+        /* a song comes in at the half or full time it was saved with: song 3
+         * (saved at full time, 120) turns half time off, and saved in half
+         * time it brings half time back, at half its full tempo */
         ui_half_time();
         ui_button(BTN_A, 1), ui_button(BTN_A, 0);
         ui_tick(10);
-        int half = song.bpm == 60.f && ui_full_bpm() == 120.f;
-        ui_half_time();
+        int half = song.bpm == 120.f && !song.half_time && ui_full_bpm() == 120.f;
+        song.bpm = 140.f;
+        ui_set_half_time(1);
+        for (int k = 0; k < 2; k++)
+            ui_button(BTN_B, 1), ui_button(BTN_B, 0); /* saved over, in half time */
+        ui_set_half_time(0);
+        song.bpm = 99.f;
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        ui_tick(10);
+        half &= song.bpm == 70.f && song.half_time && ui_full_bpm() == 140.f;
+        ui_set_half_time(0);
         ui_set_page(PAGE_PATTERN);
         printf("song files: saved %d, loaded %d, device settings kept %d, saving over asks first %d then saves %d, "
-               "playing switches in at the 1/2 bar %d (step %d), half time kept %d (want 1: %d)\n",
+               "playing switches in at the 1/2 bar %d (step %d), half time as saved %d (want 1: %d)\n",
                saved, loaded, device, asks, over, switched, in_at, half,
                saved && loaded && device && asks && over && switched && half);
     }

@@ -285,11 +285,12 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
     (as before), 2 BARS or 4 BARS. It is saved with the song.
   - **SONG** keeps sets of patterns as songs, 1 to 16. X / Y picks one, B saves everything you'd
     want back (the ten slots and their grooves, the pattern playing, the mixer, the tempo, the mute
-    scenes, SWITCH and the set of breaks) to it, and A loads it: at once when stopped, at the next
+    scenes, SWITCH, half or full time and the set of breaks) to it, and A loads it: at once when stopped, at the next
     SWITCH while playing, NEXT showing until it does. A song saved with another set loads that set
     first (the screen says so) and comes in once it has. Saving over a song takes B twice. The number is orange
     for the song last loaded or saved, dim where nothing is saved yet. The output, clock and Wi-Fi
-    sync settings stay as they are, and half time stays on. Songs are files in
+    sync settings stay as they are; the song comes in at the half or full time it was saved with
+    (songs saved before this version at full time). Songs are files in
     `ColumbiaStreet/songs/` (`song01.sav`...), to copy off the card or between units.
 
 ## Brick Pro: the sticks
@@ -318,7 +319,8 @@ R2 + the d-pad wins over the right stick while both are held.
 
 **Half time** is the HOME key on the left, under the volume keys (MustardOS's button 4; the volume keys are 2 and 3). It
 halves the tempo (a 1/2 badge in the header); a second press brings back the tempo it was, or
-doubles a tempo changed meanwhile. The song is saved at the full tempo. On another firmware,
+doubles a tempo changed meanwhile. The song is saved at the full tempo, and remembers half time:
+it loads in half time if it was saved in it. On another firmware,
 `CS_JOYMAP=HALF=n` in `launch.sh` puts it on button n (`log.txt` names the buttons it doesn't use).
 
 The groove changes the steps, never the cells: let go, and the pattern plays as programmed again.
@@ -372,7 +374,8 @@ programmed again, or press A while R2 + the d-pad plays to keep that groove with
 The Brick has no HOME key either, so its side switch is **half time**:
 up halves the tempo (the 1/2 badge), down brings back the tempo it was, or doubles a tempo changed
 meanwhile. If the switch is up when the app starts, it starts in half time; the song is still saved
-at the full tempo.
+at the full tempo, with half time remembered. A song loaded from the SONG page comes in at the half
+or full time it was saved with, even if the switch says otherwise; the next move of the switch sets it again.
 
 The switch is GPIO 243 (up 0, down 1). `CS_SWITCH=0` in `launch.sh` leaves it alone,
 `CS_SWITCH=/path` reads another file, `CS_SWITCH_FLIP=1` swaps the two positions. On TrimUI OS,

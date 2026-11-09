@@ -2046,6 +2046,7 @@ static int song_read(const char *path, Song *s)
     s->swing = (int8_t)clampi(s->swing, 0, 25);
     s->midi_mode = (uint8_t)clampi(s->midi_mode, 0, NMIDIMODE - 1);
     s->midi_clock_only = s->midi_clock_only != 0;
+    s->half_time = s->half_time != 0;
     s->breath = (int8_t)clampi(s->breath, 0, 100);
     for (int k = 0; k < NSCENE; k++) {
         s->scene_used[k] = s->scene_used[k] != 0;
