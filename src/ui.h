@@ -37,14 +37,16 @@ void ui_notice(const char *msg); /* a message on screen (main thread only): USB 
 int ui_midi_cc(int ch, int cc, int v);
 void ui_midi_chart(FILE *f);
 /* the Brick Pro's sticks: a punch-in effect (FX_*) while the right stick is
- * pushed, or -1; and a tap of the tempo (L3) */
+ * pushed, or -1 */
 void ui_stick_fx(int fx);
 /* the Brick, which has no sticks: L2 tapped alone plays the fill, L2 + the d-pad (any
  * way) closes the filter as the left stick does, L2 + A B X Y play the right
  * stick's effects (X repeat 1/8, A repeat 1/16, Y reverse, B tape stop), and
  * R2 + the d-pad plays the groove as the left stick does with the switch up */
 void ui_l2_sticks(int on);
-void ui_tap_tempo(void); /* L3; R2 + L3 lets the kept groove go */
+/* the Brick Pro's L3: the one-touch remix (engine_remix), again calls it
+ * off; R2 + L3 lets the kept groove go */
+void ui_l3(void);
 /* the one-touch fill to the end of the bar (engine_fill); again calls it off.
  * R3 on the Brick Pro; on the Brick, L2 tapped alone does the same */
 void ui_fill(void);

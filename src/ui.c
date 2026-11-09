@@ -476,16 +476,19 @@ void ui_left_mode(int groove, const char *msg)
         say("%s", msg);
 }
 
-void ui_tap_tempo(void)
+void ui_l3(void)
 {
     if (upd_open)
         return;
     ui_lock();
-    if (held[BTN_R2])
+    if (held[BTN_R2]) {
         groove_clear(); /* R2 + L3 */
-    else
-        tap_tempo();
-    changed = 1;
+        changed = 1;
+    }
+    else {
+        int r = engine_remix();
+        say(r > 0 ? "REMIX" : r < 0 ? "NO REMIX" : "THE REMIX PLAYS WHILE PLAYING");
+    }
     ui_unlock();
 }
 
@@ -1288,6 +1291,8 @@ static void draw_header(void)
         uint32_t c = i % 4 == 0 ? C_LINE + 0x141414 : C_LINE;
         if (live.fill_to > 0 && bar + i >= live.fill_from && bar + i < live.fill_to)
             c = C_SOLO; /* where the fill plays */
+        else if (live.remix_to > 0 && bar + i >= live.remix_from && bar + i < live.remix_to)
+            c = C_PLAY; /* where the remix plays */
         if (i == cur && live.playing)
             c = C_ACCENT;
         gfx_fill(i * 40 + 1, HEADER_H + 3, 38, 5, c);

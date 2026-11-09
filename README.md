@@ -155,6 +155,7 @@ These work on every page:
 | L2 (hold) | Brick Pro: low-pass sweep, closing over the time set on MIX > MASTER > L2. Brick: see below |
 | R2 + R3 (Brick Pro) | Every break channel's slice LENGTH to 20%; again, back to how they were |
 | R3 (Brick Pro) / L2 tapped alone (Brick) | **Fill**: a one-touch fill to the end of the bar; press again to call it off (see [the fill](#the-fill)) |
+| L3 (Brick Pro) | **Remix**: the pattern funked up to the end of the bar; press again to call it off (see [the remix](#the-remix)) |
 | L2 + d-pad (Brick) | Low-pass sweep, as the Brick Pro's left stick: any direction closes it over the MIX > MASTER > L2 time, let go and it opens |
 | L2 + X / A (Brick) | Repeat the last 1/8 / 1/16, as the Brick Pro's right stick up / right |
 | L2 + Y / B (Brick) | Reverse / tape stop, as the Brick Pro's right stick left / down |
@@ -191,6 +192,18 @@ Pressed early in the bar it fills the whole bar, later only what is left of it; 
 yellow where the fill will play. Press again to call it off. It changes nothing in the pattern,
 and it plays only while the sequencer runs. With SWITCH at the bar, a slot queued while the fill
 plays comes in right after it.
+
+### The remix
+
+On the Brick Pro, L3 (the left stick's click) plays a one-touch remix of the pattern, timed as the
+fill is: from the next 16th to the bar line (on the bar's last 16th, the whole next bar), steps
+lit green under the header, press again to call it off. Where the fill leaves the groove, the remix
+keeps it: everything plays as set, and the snare channel (the one the fill would use) is played the
+way a drummer would on a second pass. It stays tasteful: at most two flams, likelier on the
+backbeat; up to three quiet ghost notes on the e and the a next to its hits; and in a little over
+half of them one short roll, on its last hit near the end of the bar or as a pickup into the one.
+It's different each time, changes nothing in the pattern and plays only while the sequencer runs.
+The remix and the fill never play together: arming one calls the other off.
 
 ### Mute scenes
 
@@ -302,7 +315,7 @@ you flip it.
 | right, up / right | Repeat the last 1/8 / 1/16, as R2 + up / right |
 | right, left / down | Reverse / tape stop, as R2 + left / down |
 | R2 + left, any way (either switch position) | Sets the groove kept with the pattern: up / down moves the lock toward the breakbeats / the clave, right / left the ghost notes after / before the hits, faster the further over (all the way, about 1¼ s from nothing to full). It stays when you let go |
-| L3 (click) | Tap tempo; R2 + L3 lets the kept groove go |
+| L3 (click) | The remix (see [the remix](#the-remix)); R2 + L3 lets the kept groove go. Tap tempo is R2 + X |
 | R3 (click) | The fill (see [the fill](#the-fill)); SELECT is the new beat |
 | R2 + R3 | Every break channel's LENGTH (CHOP page) to 20%: short, choked slices. R2 + R3 again puts back the lengths they had (a channel whose LENGTH changed in between, by hand or with a slot or song, keeps its new one). Saved with the pattern while it is on, as LENGTH is |
 

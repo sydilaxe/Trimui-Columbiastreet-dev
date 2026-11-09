@@ -154,6 +154,11 @@ typedef struct {
      * snare and its kick (the same one when no other plays a kick), and
      * which of the fill shapes it plays */
     int fill_from, fill_to, fill_snare, fill_kick, fill_shape;
+    /* the one-touch remix, the same way: steps remix_from .. remix_to - 1,
+     * remix_to 0 when there's none; the channel it plays on (its snare), the
+     * step of its one roll (-1 none), its seed, and the flams and ghost
+     * notes it has played so far */
+    int remix_from, remix_to, remix_snare, remix_roll, remix_seed, remix_flams, remix_ghosts;
     volatile uint32_t songs_loaded; /* counts the songs switched in */
     int cur_slot;          /* slot last loaded or saved, or -1 */
     volatile int step;
@@ -196,6 +201,12 @@ void engine_set_playing(int on);
  * and 4), never the same twice running; the break running in GRID drops out.
  * 1 armed, -1 a fill already armed or playing called off, 0 stopped. Under the lock. */
 int engine_fill(void);
+/* the one-touch remix, armed and called off as the fill is (the two never
+ * at once: arming one calls the other off): the pattern plays on, its snare
+ * channel funked up with a tasteful few flams, ghost notes and at most one
+ * short roll into the bar line, different each time. 1 armed, -1 called
+ * off, 0 stopped. Under the lock. */
+int engine_remix(void);
 /* fill shape i over the bar's 16ths (16 characters): K kick,
  * S snare, g ghost snare, f flammed snare, r a 32nd pair on the snare, . rest */
 const char *engine_fill_shape(int i);
