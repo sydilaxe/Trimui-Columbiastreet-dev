@@ -4,8 +4,7 @@
  *
  * usage: cs_update APP_DIR [--force]
  *   checks GitHub (or CS_UPDATE_API) for a release newer than CS_VERSION and
- *   installs it into APP_DIR, which needs cacert.pem for HTTPS; an APP_DIR with
- *   mux_launch.sh updates from the MustardOS package */
+ *   installs it into APP_DIR, which needs cacert.pem for HTTPS */
 #include <stdio.h>
 #include <string.h>
 
@@ -24,7 +23,6 @@ int main(int argc, char **argv)
     char ca[1100];
     snprintf(ca, sizeof ca, "%s/cacert.pem", dir);
     net_init(ca);
-    update_detect_package(dir);
     const UpdateStatus *u = update_status();
     if (update_check()) {
         fprintf(stderr, "%s\n", u->err);

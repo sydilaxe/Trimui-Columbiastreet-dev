@@ -18,8 +18,8 @@ env:
   RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
 
 jobs:
-  trimui:
-    name: TrimUI packages (Brick / Brick Hammer, Brick Pro; TrimUI OS and MustardOS)
+  mustardos:
+    name: MustardOS packages (Brick / Brick Hammer, Brick Pro)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,26 +44,17 @@ jobs:
           fi
           echo "building version $v"
           make -j"$(nproc)" package VERSION="$v"
-          for d in brick brickpro; do
-            z=build/ColumbiaStreet-$d.zip
-            ls -l $z
-            unzip -l $z | grep -q "Apps/ColumbiaStreet/columbia$"
-            unzip -l $z | grep -q "Apps/ColumbiaStreet/breaks/DIRT/AMEN_153bpm.wav"
-            # the self-updater needs these: the CA bundle for HTTPS, and VERSION and DEVICE for install.sh
-            unzip -l $z | grep -q "Apps/ColumbiaStreet/cacert.pem"
-            test "$(unzip -p $z Apps/ColumbiaStreet/VERSION)" = "$v"
-            test "$(unzip -p $z Apps/ColumbiaStreet/DEVICE)" = $d
-            file build/$d/columbia | grep -q "ARM aarch64"
-          done
-          # MustardOS: the same binaries in "Columbia Street/", with mux_launch.sh and the list glyph
+          # the binaries in "Columbia Street/", with mux_launch.sh and the list glyph
           for d in brick brickpro; do
             z=build/ColumbiaStreet-mustardos-$d.muxapp
             ls -l $z
+            file build/$d/columbia | grep -q "ARM aarch64"
             unzip -l $z | grep -q "Columbia Street/columbia$"
             unzip -l $z | grep -q "Columbia Street/mux_launch.sh$"
             unzip -l $z | grep -q "Columbia Street/wake_screen.sh$"
             unzip -l $z | grep -q "Columbia Street/glyph/columbiastreet.svg$"
             unzip -l $z | grep -q "Columbia Street/breaks/DIRT/AMEN_153bpm.wav"
+            # the self-updater needs these: the CA bundle for HTTPS, and VERSION and DEVICE for install.sh
             unzip -l $z | grep -q "Columbia Street/cacert.pem"
             test "$(unzip -p $z "Columbia Street/VERSION")" = "$v"
             test "$(unzip -p $z "Columbia Street/DEVICE")" = $d
@@ -72,15 +63,9 @@ jobs:
             # (a bare "! cmd" can't fail a step under set -e, hence the ifs)
             if unzip -Z1 $z | grep -Eq '^/|(^|/)\.\.(/|$)|\\'; then echo "::error::$z has unsafe paths"; exit 1; fi
             if unzip -Zl $z | grep -Eq '^[bclps]'; then echo "::error::$z has links or devices"; exit 1; fi
-            # the TrimUI OS zip must not carry mux_launch.sh: it is how the app tells the packages apart
-            if unzip -l build/ColumbiaStreet-$d.zip | grep -q mux_launch.sh; then
-              echo "::error::ColumbiaStreet-$d.zip has mux_launch.sh"; exit 1
-            fi
           done
-          # the two builds differ by the Brick Pro's sticks (and the packages each updates from)
+          # the two builds differ by the Brick Pro's sticks (and the package each updates from)
           if cmp -s build/brick/columbia build/brickpro/columbia; then echo "::error::the two builds are the same"; exit 1; fi
-          strings build/brick/columbia | grep -qx "/ColumbiaStreet-brick.zip"
-          strings build/brickpro/columbia | grep -qx "/ColumbiaStreet-brickpro.zip"
           strings build/brick/columbia | grep -qx "/ColumbiaStreet-mustardos-brick.muxapp"
           strings build/brickpro/columbia | grep -qx "/ColumbiaStreet-mustardos-brickpro.muxapp"
           # the version the binaries were built as, which the updater compares with the release
@@ -88,10 +73,8 @@ jobs:
           strings build/brickpro/columbia | grep -qx "THIS IS V$v"
       - uses: actions/upload-artifact@v4
         with:
-          name: ColumbiaStreet-trimui
+          name: ColumbiaStreet-mustardos
           path: |
-            build/ColumbiaStreet-brick.zip
-            build/ColumbiaStreet-brickpro.zip
             build/ColumbiaStreet-mustardos-brick.muxapp
             build/ColumbiaStreet-mustardos-brickpro.muxapp
 
@@ -180,7 +163,7 @@ jobs:
     name: Publish release
     # runs for: a pushed v* tag, a release created on the website, or a manual run with a tag filled in
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || inputs.release_tag != ''
-    needs: [trimui, test]
+    needs: [mustardos, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -188,24 +171,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: ColumbiaStreet-trimui
+          name: ColumbiaStreet-mustardos
       - name: Check the packages are the tag's version
         run: |
-          # the trimui job built them as the tag's version; a mismatch would make the app offer
+          # the mustardos job built them as the tag's version; a mismatch would make the app offer
           # this update forever. A manual run's tag may leave out the v.
           TAG=v${RELEASE_TAG#v}
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           for d in brick brickpro; do
-            test "$(unzip -p ColumbiaStreet-$d.zip Apps/ColumbiaStreet/VERSION)" = "${TAG#v}" ||
-              { echo "::error::ColumbiaStreet-$d.zip isn't version ${TAG#v}"; exit 1; }
             test "$(unzip -p ColumbiaStreet-mustardos-$d.muxapp "Columbia Street/VERSION")" = "${TAG#v}" ||
               { echo "::error::ColumbiaStreet-mustardos-$d.muxapp isn't version ${TAG#v}"; exit 1; }
           done
-      - name: Create the GitHub release with the TrimUI OS and MustardOS packages
+      - name: Create the GitHub release with the MustardOS packages
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          files="ColumbiaStreet-brick.zip ColumbiaStreet-brickpro.zip ColumbiaStreet-mustardos-brick.muxapp ColumbiaStreet-mustardos-brickpro.muxapp"
+          files="ColumbiaStreet-mustardos-brick.muxapp ColumbiaStreet-mustardos-brickpro.muxapp"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" $files --repo "$GITHUB_REPOSITORY" --clobber
           else

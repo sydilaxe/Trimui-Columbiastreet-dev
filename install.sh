@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
-# Install or update Columbia Street on a TrimUI Brick, Brick Hammer or Brick Pro, running TrimUI OS
-# or MustardOS. Run it on a computer on the same network as the TrimUI:
+# Install or update Columbia Street on a TrimUI Brick, Brick Hammer or Brick Pro running MustardOS.
+# Run it on a computer on the same network as the TrimUI:
 #
 #   curl -fsSL https://raw.githubusercontent.com/sydilaxe/Trimui-Columbiastreet-dev/main/install.sh | bash
 #
 # It finds the TrimUI over SSH (the firmware's SSH server must be on), compares the installed
-# version with the latest GitHub release, and copies the new build there if the release is newer:
-# to SD:/Apps/ColumbiaStreet on TrimUI OS, or to MustardOS's application folder (MUOS/application/
-# Columbia Street) on MustardOS, which it tells apart by itself. Your song (columbia.sav) and any
-# breaks or basses you added stay as they are.
+# version with the latest GitHub release, and copies the new build to MustardOS's application
+# folder (MUOS/application/Columbia Street) if the release is newer. Your song (columbia.sav) and
+# any breaks or basses you added stay as they are.
 #
 #   CS_HOST=192.168.1.28    skip the scan and use this address
 #   CS_USER=root            SSH user (root by default)
 #   CS_DEVICE=brickpro      the Brick Pro's build (with the sticks); brick for the Brick and Brick
-#                           Hammer. MustardOS and an installed copy say which it is, so this is only
-#                           needed the first time on TrimUI OS.
+#                           Hammer. MustardOS says which it is, so this is rarely needed.
 #   CS_FORCE=1              reinstall even if the TrimUI already has the latest version
 #
 # The address that worked is saved in ~/.config/columbiastreet/host and tried first next time.
@@ -22,8 +20,7 @@
 set -euo pipefail
 
 REPO=sydilaxe/Trimui-Columbiastreet-dev
-APPS=/mnt/SDCARD/Apps                       # TrimUI OS
-MUX_APPS=/run/muos/storage/application     # MustardOS: SD2's or SD1's MUOS/application
+MUX_APPS=/run/muos/storage/application     # SD2's or SD1's MUOS/application
 SSH_USER=${CS_USER:-root}
 SAVED=${XDG_CONFIG_HOME:-$HOME/.config}/columbiastreet/host
 
@@ -115,7 +112,7 @@ on_device() {
 }
 
 main() {
-    local c latest installed device asset os folder dest where
+    local c latest installed device asset folder="Columbia Street" dest=$MUX_APPS
 
     for c in curl unzip ssh tar awk; do
         command -v "$c" >/dev/null || die "this needs $c"
@@ -142,20 +139,17 @@ main() {
     [ -n "$host" ] || scan
 
     say "connecting to $SSH_USER@$host"
-    # "OS VERSION DEVICE": the firmware (trimui / mustardos), and the installed version and build
-    # (brick / brickpro), each "-" when not known. MustardOS names the device itself.
-    installed=$(on_device "if [ -d /opt/muos ]; then
-            d='$MUX_APPS/Columbia Street'; os=mustardos
-            case \$(cat /opt/muos/device/config/board/name 2>/dev/null) in
-            tui-brick-pro) dev=brickpro ;; tui-brick) dev=brick ;; *) dev= ;; esac
-        else
-            test -d $APPS || exit 3; d=$APPS/ColumbiaStreet; os=trimui; dev=
-        fi
+    # "VERSION DEVICE": the installed version and build (brick / brickpro), each "-" when not
+    # known. MustardOS names the device itself.
+    installed=$(on_device "test -d /opt/muos || exit 3
+        d='$MUX_APPS/Columbia Street'
+        case \$(cat /opt/muos/device/config/board/name 2>/dev/null) in
+        tui-brick-pro) dev=brickpro ;; tui-brick) dev=brick ;; *) dev= ;; esac
         v=\$(cat \"\$d/VERSION\" 2>/dev/null); dev=\${dev:-\$(cat \"\$d/DEVICE\" 2>/dev/null)}
-        echo \"\$os \${v:--} \${dev:--}\"" </dev/null) ||
-        die "couldn't log in to $host, or it has no $APPS (is it the TrimUI card?)"
+        echo \"\${v:--} \${dev:--}\"" </dev/null) ||
+        die "couldn't log in to $host, or it isn't running MustardOS (Columbia Street is built only for MustardOS)"
     mkdir -p "$(dirname "$SAVED")" && echo "$host" >"$SAVED"
-    read -r os installed device <<<"$(printf '%s\n' "$installed" | head -n 1)"
+    read -r installed device <<<"$(printf '%s\n' "$installed" | head -n 1)"
     [ "$installed" = - ] && installed=
     [ "$device" = - ] && device=
     device=${CS_DEVICE:-$device}
@@ -167,12 +161,8 @@ main() {
         ;;
     *) die "CS_DEVICE is brick or brickpro, not $device" ;;
     esac
-    if [ "$os" = mustardos ]; then
-        asset=ColumbiaStreet-mustardos-$device.muxapp folder="Columbia Street" dest=$MUX_APPS where=Applications
-        say "MustardOS on a $([ $device = brickpro ] && echo "Brick Pro" || echo "Brick / Brick Hammer")"
-    else
-        asset=ColumbiaStreet-$device.zip folder=ColumbiaStreet dest=$APPS where=Apps
-    fi
+    asset=ColumbiaStreet-mustardos-$device.muxapp
+    say "MustardOS on a $([ $device = brickpro ] && echo "Brick Pro" || echo "Brick / Brick Hammer")"
 
     if [ -z "$installed" ]; then
         say "the TrimUI has no Columbia Street yet"
@@ -190,9 +180,8 @@ main() {
     say "downloading v$latest ($asset)..."
     curl -fsSL -o "$tmp/$asset" "https://github.com/$REPO/releases/download/v$latest/$asset"
     unzip -q "$tmp/$asset" -d "$tmp/zip"
-    # the TrimUI OS zip holds Apps/ColumbiaStreet, the .muxapp "Columbia Street"
-    local src="$tmp/zip/Apps"
-    [ "$os" = mustardos ] && src="$tmp/zip"
+    # the .muxapp holds "Columbia Street"
+    local src="$tmp/zip"
     [ -f "$src/$folder/columbia" ] || die "the release's $asset has no $folder/columbia"
     # the song is the user's (releases don't carry one, but never overwrite it)
     rm -f "$src/$folder/"columbia.sav*
@@ -200,7 +189,7 @@ main() {
     say "copying to $host:$dest/$folder..."
     (cd "$src" && COPYFILE_DISABLE=1 tar --format=ustar -cf - "$folder") |
         on_device "mkdir -p '$dest' && tar -xf - -C '$dest' && sync"
-    say "Columbia Street v$latest is installed. Launch it from $where."
+    say "Columbia Street v$latest is installed. Launch it from Applications."
 }
 
 # everything runs from here, so bash has read the whole script before `curl | bash` starts it
