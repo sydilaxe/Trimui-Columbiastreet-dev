@@ -298,8 +298,21 @@ void ui_r3(void)
     ui_unlock();
 }
 
+/* half time as song.half_time has it, song.bpm being the full tempo (a song
+ * just loaded) */
+static void half_apply(void)
+{
+    half_on = song.half_time != 0;
+    if (half_on) {
+        half_from = song.bpm;
+        song.bpm = fmaxf(40.f, roundf(song.bpm * 5.f) / 10.f);
+        half_to = song.bpm;
+    }
+}
+
 void ui_init(void)
 {
+    half_apply(); /* the last song's half time */
     for (int v = 0; v < NV; v++)
         seen_trig[v] = live.trig_count[v];
     songs_seen = live.songs_loaded;
@@ -438,6 +451,7 @@ void ui_half_time(void)
         half_on = 0;
         say("FULL TIME  %.1f BPM", song.bpm);
     }
+    song.half_time = (uint8_t)half_on; /* saved with the song */
     ui_unlock();
 }
 
@@ -1143,14 +1157,10 @@ void ui_tick(int ms)
     groove_edit(ms);
     if (live.songs_loaded != songs_seen) {
         /* a song switched in: its mutes and solos replace any scene's, and
-         * half time stays on at half the song's tempo */
+         * it comes in at the half or full time it was saved with */
         songs_seen = live.songs_loaded;
         scene_on = -1;
-        if (half_on) {
-            half_from = song.bpm;
-            song.bpm = fmaxf(40.f, roundf(song.bpm * 5.f) / 10.f);
-            half_to = song.bpm;
-        }
+        half_apply();
         changed = 1;
     }
     ui_unlock();

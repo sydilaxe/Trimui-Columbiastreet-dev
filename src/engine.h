@@ -113,6 +113,9 @@ typedef struct {
     /* v0.10: the set of breaks the song was saved with (a folder in breaks/),
      * brought in when it loads; empty in older songs, which keep the set in */
     char break_set[SET_NAME];
+    /* v0.11: half time on when the song was saved (its bpm is still the full
+     * tempo); a song switching in brings it back, older songs at full time */
+    uint8_t half_time;
 } Song;
 
 /* the MIDI clock: AUTO sends it and follows one that comes in, SEND always
