@@ -16,6 +16,10 @@ up, as the screen can stay dark on MustardOS until a sleep and wake) and the lis
 samples load on a thread while the loading screen keeps being presented. `make test` renders screenshots and audio on the host into
 `build/test` and prints the engine checks. Without zig on the path, `pip install ziglang==0.14.1`.
 
+`mux_launch.sh` holds MustardOS's idle off while the app is open (its Idle Mute would stop the sound two
+minutes after the last press): `idle_inhibit` re-set every 2 s and `caffeine`, given back on exit. The block
+is the same in Jaffedrone, Columbia Street, HI5, RadioScan and Conduit; keep the copies the same.
+
 The platform layer is `src/main_trimui.c` (SDL2: video scaled 1.6x from the 640x480 pages, the
 buttons of MustardOS's "muOS-Keys" controller (the Brick's or the Brick Pro's numbering, found at run time), USB audio
 with hot-plug, the sticks) and `src/midi.c` (USB MIDI clock in
