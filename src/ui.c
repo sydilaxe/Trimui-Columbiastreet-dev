@@ -624,8 +624,10 @@ static void sample_action(int b, int repeats)
     case BTN_B:
         if (repeats)
             return;
-        rec_src = rec_src == SRC_IN ? SRC_OUT : SRC_IN;
-        say(rec_src == SRC_IN ? "SAMPLE THE INPUT" : "RESAMPLE: THE SOUND OF THIS BRICK");
+        rec_src = (rec_src + 1) % NSRC;
+        say(rec_src == SRC_IN    ? "SAMPLE THE INPUT"
+            : rec_src == SRC_OUT ? "RESAMPLE: THE SOUND OF THIS BRICK"
+                                 : "SAMPLE THE LINK: THE LEADING BRICK'S SOUND");
         return;
     case BTN_A:
         if (repeats)
@@ -642,6 +644,10 @@ static void sample_action(int b, int repeats)
         }
         if (rec_src == SRC_IN && !(ui_audio_input && ui_audio_input())) {
             say("NO INPUT: PLUG IN A USB INTERFACE, OR B: RESAMPLE");
+            return;
+        }
+        if (rec_src == SRC_LINK && !midi_link_audio(NULL)) {
+            say("NO BRICK SENDING ON THE LINK (BOTTOM PORT TO ITS HUB)");
             return;
         }
         rec_len_name(len, sizeof len);
@@ -1400,7 +1406,7 @@ static void draw_footer(void)
     };
     const char *hint = hints[page];
     if (page == PAGE_CHOP && chop_p == CHOP_TOP)
-        hint = "X/Y:LENGTH  B:INPUT/RESAMPLE  A:REC / STOP";
+        hint = "X/Y:LENGTH  B:INPUT/RESAMPLE/LINK  A:REC / STOP";
     else if (page == PAGE_CHOP && chop_p == CHOP_TOP + 1)
         hint = "X/Y:CUT IT AGAIN, LIVE  A:PLAY SLICE  B:MUTE";
     else if (page == PAGE_CHOP && chop_p < 0)
@@ -1602,7 +1608,10 @@ static void draw_chop(void)
         gfx_fill(wx, iy - 2, ww, 24, C_PANEL2);
         gfx_rect(wx, iy - 2, ww, 24, 2, 0xff3030);
         gfx_text(wx + 8, iy, "SAMPLE", C_TEXT, FONT_SMALL);
-        snprintf(info, sizeof info, "< %s >  %s", len, rec_src == SRC_IN ? "INPUT" : "RESAMPLE");
+        BlinkName ln = {""};
+        int lk = rec_src == SRC_LINK && midi_link_audio(&ln);
+        snprintf(info, sizeof info, "< %s >  %s%.10s", len,
+                 rec_src == SRC_IN ? "INPUT" : rec_src == SRC_OUT ? "RESAMPLE" : lk ? "LINK: " : "LINK (NONE)", lk ? ln.s : "");
         gfx_text(wx + 90, iy, info, C_TEXT, FONT_SMALL);
         if (rst == REC_ARMED)
             snprintf(info, sizeof info, "REC%d ARMED: NEXT BAR", sampler_channel() + 1);

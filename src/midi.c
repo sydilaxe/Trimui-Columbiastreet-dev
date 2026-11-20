@@ -8,6 +8,7 @@
 #include "engine.h"
 #include "ui.h"
 
+#include "../lib/brickio/blinkauto.h"
 #include "../lib/brickio/link.h"
 #include "../lib/brickio/linkpos.h"
 #include "../lib/brickio/mclockio.h"
@@ -232,7 +233,7 @@ int midi_link_step(uint64_t t, uint8_t *out, int max) { return mclock_link_step(
 
 /* ------------------------------------------------------------- running */
 
-static int running, link_on;
+static int running, link_on, link_audio;
 
 static int env_on(const char *name)
 {
@@ -252,9 +253,19 @@ void midi_io_start(void)
     midi_set_priority(40);
     midi_set_raw(on_raw, NULL);
     midi_start(NULL, NULL);
-    /* the bottom port as a clock link: a Brick with a hub can lead this one (CS_LINK=0: left alone) */
+    /* the bottom port as a clock link: a Brick with a hub can lead this one (CS_LINK=0: left alone);
+     * with the data channel beside it, for the leader's sound (the sampler's LINK; CS_LINK_AUDIO=0: not) */
+    link_audio = env_on("CS_LINK_AUDIO");
+    link_follow_data(link_audio);
     link_follow_priority(40);
     link_on = link_follow_start("CS", mcio_link_bytes, NULL, notice_line);
+    if (link_on && link_audio) {
+        BlConfig bc = {.app = "CS", .name = "Columbia Street", .rate = 48000, .nports = 1};
+        bc.ports[0] = (BlinkPort){BLINK_PORT_AUDIO_IN, 0, 2, "SAMPLE"};
+        link_audio = bla_follow_start(&bc) == 0;
+    }
+    else
+        link_audio = 0;
     mcio_start();
     running = 1;
 }
@@ -265,10 +276,29 @@ void midi_io_stop(void)
         return;
     running = 0;
     mcio_stop(); /* STOP out if the clock was going */
+    if (link_audio)
+        bla_stop();
     if (link_on)
         link_follow_stop(); /* the bottom port given back */
     midi_set_raw(NULL, NULL);
     midi_stop();
+}
+
+int midi_link_audio(BlinkName *name)
+{
+    if (!link_audio)
+        return 0;
+    BlinkHello h;
+    int n = bla_peers(&h);
+    if (n && name)
+        snprintf(name->s, sizeof name->s, "%s", h.name);
+    return n > 0;
+}
+
+void midi_link_pull(float *dst, int frames, double *pos)
+{
+    if (!link_audio || !bla_pull(0, dst, frames, pos))
+        *pos = -1.0, memset(dst, 0, sizeof(float) * 2 * (size_t)frames);
 }
 
 /* main thread, each frame: the settings into the clock, and MIDI ports coming and going */

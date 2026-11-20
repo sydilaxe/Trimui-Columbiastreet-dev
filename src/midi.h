@@ -38,6 +38,12 @@ const SyncClock *wifi_clock(void);
 void midi_io_start(void);
 void midi_io_stop(void);
 void midi_tick(void); /* main thread, each frame: the SONG page's setting, ports coming and going */
+/* the leading Brick's sound over the link's data channel (brickio's blinkauto; Jaffedrone sends it):
+ * 1 while one sends, with its name; the audio thread takes a block of it (silence and pos -1 when none),
+ * with the music's position of its first frame in the sender's 16ths */
+typedef struct { char s[25]; } BlinkName;
+int midi_link_audio(BlinkName *name);
+void midi_link_pull(float *dst, int frames, double *pos);
 void midi_set_latency(float seconds); /* from the engine's position to the sound heard */
 /* messages for the screen ("MIDI: <device>"), main thread */
 int midi_take_notice(char *buf, int n);

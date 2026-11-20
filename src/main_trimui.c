@@ -106,13 +106,19 @@ static void unlock(void)
 }
 
 /* one block of the engine, the audio lock held: the audio clock told where it
- * is, the sampler given the block (and the input) */
+ * is, the sampler given the block (and the input, and the leading Brick's
+ * sound over the link with its position) */
+static int link_rx; /* a leading Brick's sound can come in on the bottom port */
 static void render(const float *in, int16_t *s, int frames)
 {
-    double p0 = engine_position(), spf = engine_steps_per_frame();
+    static float lk[2 * 2048];
+    double p0 = engine_position(), spf = engine_steps_per_frame(), lpos = -1.0;
     engine_render(s, frames);
     aclock_made(frames, engine_position(), engine_steps_per_frame());
-    sampler_audio(in, s, frames, p0, spf);
+    int lrx = link_rx && frames <= 2048; /* (brickio's blocks are; the SDL path's at most CS_BUFFER) */
+    if (lrx)
+        midi_link_pull(lk, frames, &lpos);
+    sampler_audio(in, lrx ? lk : NULL, lpos, s, frames, p0, spf);
 }
 
 static void audio_cb(void *ud, Uint8 *stream, int len)
@@ -1060,8 +1066,10 @@ int main(int argc, char **argv)
     midi_set_latency((float)bufsz / rate);
     if (use_bio)
         bio_latency();
-    if (env_int("CS_MIDI", 1))
+    if (env_int("CS_MIDI", 1)) {
         midi_io_start(); /* brickio's reader, the clock thread, and the Brick link on the bottom port */
+        link_rx = 1;
+    }
     int update_auto = env_int("CS_UPDATE", 1) != 0, update_tries = 0;
     if (update_auto) {
         net_init(CA_BUNDLE);

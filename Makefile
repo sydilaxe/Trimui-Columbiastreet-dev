@@ -24,8 +24,9 @@ SDL_INC := third_party/SDL2-2.30.9-headers
 # lib/brickio: the TrimUI apps' shared USB audio, MIDI and clock, a copy of sydilaxe/Brickio-dev's src/ at
 # lib/brickio/BRICKIO_VERSION (update it with Brickio-dev's tools/brickio-sync.sh, never by editing it here)
 BIO    := lib/brickio
-BIO_CLOCK := $(BIO)/aclock.c $(BIO)/perflog.c $(BIO)/link.c $(BIO)/linkpos.c $(BIO)/mclock.c $(BIO)/mclockio.c $(BIO)/midi.c $(BIO)/sync.c
-BIO_AUDIO := $(BIO)/usbaudio.c $(BIO)/duplex.c $(BIO)/aring.c
+BIO_CLOCK := $(BIO)/aclock.c $(BIO)/perflog.c $(BIO)/link.c $(BIO)/linkpos.c $(BIO)/mclock.c $(BIO)/mclockio.c $(BIO)/midi.c $(BIO)/sync.c \
+             $(BIO)/blinkauto.c $(BIO)/blinkio.c $(BIO)/blink.c $(BIO)/aring.c
+BIO_AUDIO := $(BIO)/usbaudio.c $(BIO)/duplex.c
 BIOH   := $(wildcard $(BIO)/*.h)
 SRC    := src/engine.c src/breaks.c src/ui.c src/gfx.c src/sampler.c
 HDR    := src/engine.h src/breaks.h src/ui.h src/gfx.h src/sampler.h src/font_data.h src/update.h $(BIOH)

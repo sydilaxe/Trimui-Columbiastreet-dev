@@ -19,6 +19,7 @@ export LD_LIBRARY_PATH="/usr/lib:$LD_LIBRARY_PATH"
 #   CS_REC_OFFSET=3    the sampler's input later by 3 ms (or earlier: -3), trimmed by ear
 #   CS_SYNC_LATENCY=N  the output's latency in frames, for an interface whose converters add more
 #   CS_MIDI_RELAY=0    following a clock, don't pass it on to the other MIDI ports
+#   CS_LINK_AUDIO=0    the bottom port as the clock link alone (no leading Brick's sound for the sampler's LINK)
 #   CS_RATE=44100      a lower sample rate: a little less work
 #   CS_UPDATE=0        don't check GitHub for a new version
 #   CS_AUDIO=internal  always the speaker and headphones (default: a USB audio device when one is plugged in)

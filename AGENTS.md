@@ -42,7 +42,10 @@ The sampler (`src/sampler.c`, the CHOP page's SAMPLE stop, and its CHOP stop to 
 new on the TrimUI: it records the input or the output into a break channel in time (from the next bar line,
 exactly its bars long, the input lined up by the round trip), cuts it on a thread of its own and swaps it
 in as RECn under the audio lock (`engine_bank_replaced`), and keeps it in `rec/`, loaded after every set
-(`breaks_set_rec_dir`). `make test` records both sources and checks they start on the bar line to the
+(`breaks_set_rec_dir`). The LINK source is a leading Brick's sound (Jaffedrone sends it) over the Brick link's
+data channel beside the clock link (`link_follow_data`, brickio's `blinkauto`, in `src/midi.c`), each block
+with the sender's position, so it starts on the sender's bar line. `make test` records all three sources
+(the input 1234 frames late, the link 2345 frames on the way) and checks they start on the bar line to the
 sample. `rec/` and `audio.txt` are the user's: the updater never writes them (`keep_users`).
 
 The mute scenes (M1, M2: the mixer's mutes and solos, saved in the song after the v0.3 fields;

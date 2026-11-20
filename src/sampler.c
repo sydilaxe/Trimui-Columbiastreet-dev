@@ -27,6 +27,7 @@ static int sync_mode;
 static atomic_int state = REC_IDLE, cancel_req, stop_req;
 static int ch, bars, src;
 static double target;   /* the bar line it starts on (audio thread's) */
+static int link_wait;   /* LINK armed: frames waited for the sender's position */
 static int want, got;   /* frames: the length (0: FREE), and recorded so far */
 static float rec_bpm;   /* the tempo it was recorded at (0: free, not playing) */
 static _Atomic float level;
@@ -50,7 +51,8 @@ void sampler_sync_mode(int on) { sync_mode = on; }
 
 /* ------------------------------------------------------------- audio side */
 
-void sampler_audio(const float *in, const int16_t *out, int frames, double pos0, double spf)
+void sampler_audio(const float *in, const float *link, double link_pos, const int16_t *out, int frames, double pos0,
+                   double spf)
 {
     int st = atomic_load_explicit(&state, memory_order_acquire);
     if (st != REC_ARMED && st != REC_RECORDING)
@@ -63,12 +65,17 @@ void sampler_audio(const float *in, const int16_t *out, int frames, double pos0,
     int i = 0;
     if (st == REC_ARMED) {
         /* the position each frame stands for: the output's own; the input's
-         * as long before as it is late (what was heard then is what came in) */
-        double lag = src == SRC_IN ? atomic_load(&lat_frames) : 0.0;
+         * as long before as it is late (what was heard then is what came in);
+         * the link's, the sender's own (its tempo is this one's: it leads) */
+        double lag = src == SRC_IN ? atomic_load(&lat_frames) : 0.0, p0 = pos0;
+        if (src == SRC_LINK && link && link_pos >= 0.0)
+            p0 = link_pos, lag = 0.0, spf = song.bpm / 15.0 / sr;
+        else if (src == SRC_LINK && isnan(target) && (link_wait += frames) < sr / 4)
+            return; /* a moment for the sender's position (none: it isn't playing), then this Brick's own bar */
         if (isnan(target))
-            target = ceil((pos0 - lag * spf) / 16.0 - 1e-9) * 16.0;
+            target = ceil((p0 - lag * spf) / 16.0 - 1e-9) * 16.0;
         for (; i < frames; i++)
-            if (pos0 + (i - lag) * spf >= target)
+            if (p0 + (i - lag) * spf >= target)
                 break;
         if (i >= frames)
             return;
@@ -84,6 +91,8 @@ void sampler_audio(const float *in, const int16_t *out, int frames, double pos0,
         float x;
         if (src == SRC_OUT)
             x = (out[2 * i] + out[2 * i + 1]) * (0.5f / 32768.f);
+        else if (src == SRC_LINK)
+            x = link ? 0.5f * (link[2 * i] + link[2 * i + 1]) : 0.f;
         else
             x = in ? 0.5f * (in[2 * i] + in[2 * i + 1]) : 0.f;
         buf[got++] = x;
@@ -121,7 +130,7 @@ int sampler_arm(int v, int nbars, int source)
     if (!cap || atomic_load(&state) != REC_IDLE)
         return 0;
     ch = v, bars = nbars, src = source;
-    target = NAN;
+    target = NAN, link_wait = 0;
     got = 0, want = 0;
     atomic_store(&prog, 0);
     atomic_store(&cancel_req, 0), atomic_store(&stop_req, 0);

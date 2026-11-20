@@ -2403,14 +2403,16 @@ int main(int argc, char **argv)
         song_default();
         song.bpm = 170.f;
         engine_set_playing(1);
-        enum { LAG = 1234, BLK = 256, MAXF = RATE * 8 };
+        enum { LAG = 1234, DL = 2345, BLK = 256, MAXF = RATE * 8 };
         static int16_t s16[2 * BLK];
-        static float hist[MAXF], fin[2 * BLK], ring[2 * (LAG + BLK)];
+        static float hist[MAXF], fin[2 * BLK], ring[2 * (LAG + BLK)], lnk[2 * BLK];
         static double hpos[MAXF];
         int ok_all = 1;
         const int want = (int)llround(2 * 16 * 15.0 * RATE / 170.0);
-        for (int pass = 0; pass < 2; pass++) {
-            int src = pass ? SRC_IN : SRC_OUT;
+        /* the third: the leading Brick's sound over the link, 2345 frames on the way, each block with
+         * the music's position of its first frame (the sender's) */
+        for (int pass = 0; pass < 3; pass++) {
+            int src = pass == 2 ? SRC_LINK : pass ? SRC_IN : SRC_OUT;
             sampler_set_latency(src == SRC_IN ? LAG : 0);
             memset(ring, 0, sizeof ring);
             int nh = 0, rp = 0;
@@ -2432,9 +2434,13 @@ int main(int argc, char **argv)
                     fin[2 * i] = ring[2 * r], fin[2 * i + 1] = ring[2 * r + 1];
                 }
                 rp = (rp + BLK) % (LAG + BLK);
-                sampler_audio(fin, s16, BLK, p0, spf);
                 for (int i = 0; i < BLK; i++)
                     hist[nh + i] = (s16[2 * i] + s16[2 * i + 1]) * (0.5f / 32768.f), hpos[nh + i] = p0 + i * spf;
+                /* the link: what was made DL frames ago, and where it falls (none yet: silence, -1) */
+                double lpos = nh >= DL ? hpos[nh - DL] : -1.0;
+                for (int i = 0; i < BLK; i++)
+                    lnk[2 * i] = lnk[2 * i + 1] = nh + i >= DL ? hist[nh + i - DL] : 0.f;
+                sampler_audio(fin, lnk, lpos, s16, BLK, p0, spf);
                 nh += BLK;
             }
             char msg[64] = "";
@@ -2455,7 +2461,7 @@ int main(int argc, char **argv)
                      fabsf(banks[bi].bpm - 170.f) < 0.01f && song.pat.param[0][B_BANK] == bi && c > 0.9999 && c > c1;
             printf("sampler %s: armed %d, in %d (%s), REC1 %d frames (want %d), %d steps, %.2f BPM, on the bar line %d "
                    "(match %.5f, a frame later %.5f), BRK1 plays it %d\n",
-                   src == SRC_IN ? "input, 1234 frames late" : "resample", armed, in, msg, bi >= 0 ? banks[bi].len : 0, want,
+                   src == SRC_IN ? "input, 1234 frames late" : src == SRC_LINK ? "link, 2345 frames on the way" : "resample", armed, in, msg, bi >= 0 ? banks[bi].len : 0, want,
                    bi >= 0 ? banks[bi].steps : 0, bi >= 0 ? banks[bi].bpm : 0.f, c > c1, c, c1, song.pat.param[0][B_BANK] == bi);
             ok_all &= ok;
         }
@@ -2491,7 +2497,7 @@ int main(int argc, char **argv)
         for (int k = 0; k < 4; k++) { /* a little way in, so the screen shows it */
             double p0 = engine_position(), spf = engine_steps_per_frame();
             engine_render(s16, BLK);
-            sampler_audio(NULL, s16, BLK, p0, spf);
+            sampler_audio(NULL, NULL, -1.0, s16, BLK, p0, spf);
         }
         ui_draw(rfb);
         snprintf(p, sizeof p, "%s/sampler.ppm", out);
@@ -2499,7 +2505,7 @@ int main(int argc, char **argv)
         ui_button(BTN_A, 1), ui_button(BTN_A, 0);
         double p0 = engine_position(), spf = engine_steps_per_frame();
         engine_render(s16, BLK);
-        sampler_audio(NULL, s16, BLK, p0, spf);
+        sampler_audio(NULL, NULL, -1.0, s16, BLK, p0, spf);
         int off = sampler_state() == REC_IDLE;
         ui_button(BTN_DOWN, 1), ui_button(BTN_DOWN, 0); /* SAMPLE -> CHOP */
         ui_button(BTN_X, 1), ui_button(BTN_X, 0);       /* HITS -> 16THS, live */

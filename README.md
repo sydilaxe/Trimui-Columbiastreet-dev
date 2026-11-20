@@ -267,8 +267,9 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
   break. Up / down picks a parameter, X / Y change it, A plays the slice, B mutes the channel.
   - **SAMPLE** (the top stop, up from CHOP): records into this channel while the beat plays.
     X / Y pick the length: 1, 2, 4 or 8 bars, or FREE. B picks the source: **INPUT** (a USB
-    interface's input: another Brick, a drum machine, a record) or **RESAMPLE** (Columbia Street's
-    own sound). A arms it: playing, a recording in bars starts on the next bar line and is exactly
+    interface's input: another Brick, a drum machine, a record), **RESAMPLE** (Columbia Street's
+    own sound) or **LINK** (the sound of the Brick leading this one over the USB link, Jaffedrone say:
+    see [Sampling](#sampling); the row names it). A arms it: playing, a recording in bars starts on the next bar line and is exactly
     that long at the tempo, so it plays in time with nothing stretched; stopped, or FREE, it starts
     at once (FREE stops at the next A). A while armed, or during a recording in bars, calls it off.
     The waveform shows it filling. Done, it is cut at its hits on the 16th grid and comes in as
@@ -506,7 +507,16 @@ For the input, connect the other unit's output to the interface's input and lead
 Street), or follow it. The recording is lined up by the round trip, what this Brick hears and what
 comes back in, so what the other unit plays on the bar is the recording's first sample.
 `CS_REC_OFFSET=<ms>` trims what is left by ear (positive: later in the source). RESAMPLE takes
-Columbia Street's own sound, exactly, with nothing to line up. Recordings are 16-bit mono WAVs in
+Columbia Street's own sound, exactly, with nothing to line up.
+
+**LINK: another Brick's sound over the USB link.** With the Bricks linked (the leader's top port to a
+powered hub, Columbia Street's bottom port into the hub: [Linking Bricks](#linking-bricks-over-usb)), a
+leader that sends its sound (Jaffedrone does) sends it over the same cable, beside its clock, through
+[brickio](https://github.com/sydilaxe/Brickio-dev)'s link data channel: no audio interface or cables
+between them. Every block comes with where it falls in the leader's music, so a recording in bars starts
+on the leader's own bar line, to the sample, however long the sound took on the way; nothing to trim.
+The SAMPLE row shows the leader's name while its sound comes in. `CS_LINK_AUDIO=0` leaves the data channel
+off (the clock link alone, as before). Recordings are 16-bit mono WAVs in
 `rec/` (`REC1_2BAR.wav`: channel 1, two bars, its tempo exact from its length; `_16THS` and so on
 when cut again), at most 40 seconds. Delete one to forget it; copy one into a set to keep it there. `CS_ROTATE=180` turns the picture and
 `CS_JOYMAP=A=1,B=0,...` renumbers the buttons (also `L2`, `R2`, `L3`, `R3`, `F1`, `F2`), for a firmware that

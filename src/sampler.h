@@ -2,12 +2,16 @@
  * chops what it recorded into a bank that channel plays at once.
  *
  * Source: the input (a USB interface's, through brickio: another Brick, a
- * drum machine, a record) or the output (resampling Columbia Street itself).
+ * drum machine, a record), the output (resampling Columbia Street itself), or
+ * the Brick link (LINK: the sound of the Brick leading this one, Jaffedrone
+ * say, over the cable on this one's bottom port, brickio's blinkauto).
  * Length: 1, 2, 4 or 8 bars, starting on the next bar line while playing (the
  * recording is then exactly that long at the tempo, so it plays in time with
  * no stretching), or FREE: from the press to the next press (or stopped: on
  * the press). The input is lined up by its latency: what plays on the beat
  * at the other end, in time with this Brick's clock, lands on the beat here.
+ * LINK needs no latency: each block comes with where it falls in the sender's
+ * music, and the recording starts on the sender's own bar line.
  *
  * Done, the recording is cut on a thread of its own (at its hits, on the
  * 16th grid), and swapped in under the audio lock as RECn (n the channel),
@@ -19,7 +23,7 @@
 #pragma once
 #include <stdint.h>
 
-enum { SRC_IN, SRC_OUT, NSRC };
+enum { SRC_IN, SRC_OUT, SRC_LINK, NSRC };
 enum { REC_IDLE, REC_ARMED, REC_RECORDING, REC_CHOPPING };
 
 void sampler_init(int rate, const char *dir); /* the recording buffer (REC_MAX_SECS), and where they are kept */
@@ -28,9 +32,12 @@ void sampler_init(int rate, const char *dir); /* the recording buffer (REC_MAX_S
 void sampler_set_latency(int frames);
 
 /* audio thread, audio locked, after engine_render: in (stereo float, NULL or
- * silence when there is none), out (what was just made, 16-bit stereo), the
+ * silence when there is none), link (the leading Brick's sound, stereo float,
+ * or NULL) with the music's position of its first frame (the sender's, in
+ * 16ths; -1 when it gave none), out (what was just made, 16-bit stereo), the
  * engine's position before the block and how far it moves a frame */
-void sampler_audio(const float *in, const int16_t *out, int frames, double pos0, double steps_per_frame);
+void sampler_audio(const float *in, const float *link, double link_pos, const int16_t *out, int frames, double pos0,
+                   double steps_per_frame);
 
 /* main thread */
 int sampler_arm(int v, int bars, int src); /* 1 armed (or recording, FREE); 0 busy */
