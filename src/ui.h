@@ -44,6 +44,8 @@ void ui_stick_fx(int fx);
  * stick's effects (X repeat 1/8, A repeat 1/16, Y reverse, B tape stop), and
  * R2 + the d-pad plays the groove as the left stick does with the switch up */
 void ui_l2_sticks(int on);
+/* the main program's answer to "is there an input to sample?" (NULL: none) */
+extern int (*ui_audio_input)(void);
 /* the Brick Pro's L3: the one-touch remix (engine_remix), again calls it
  * off; R2 + L3 lets the kept groove go */
 void ui_l3(void);
@@ -76,4 +78,5 @@ void ui_set_page(int p); /* for the test harness */
  * was saved with another one (test harness) */
 int ui_song_open(int n);
 void ui_set_chop_row(int p); /* the CHOP page's stop: -1 SET, 0.. the params (test harness) */
+void ui_set_chop_channel(int v); /* the CHOP page's channel (the test harness) */
 int ui_scene_on(void);    /* the mute scene switched on (0 M1, 1 M2), or -1 */

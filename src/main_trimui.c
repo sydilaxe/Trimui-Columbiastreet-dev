@@ -35,6 +35,8 @@
 #include "sync.h"
 #include "ui.h"
 #include "update.h"
+#include "sampler.h"
+#include "usbaudio.h"
 
 #ifdef CS_BRICKPRO
 #define DEVICE_NAME "TrimUI Brick Pro"
@@ -47,6 +49,8 @@
 #define BASS_DIR "bass"
 #define SET_CHOICE "breakset.txt" /* the set of breaks picked last */
 #define CA_BUNDLE "cacert.pem"
+#define REC_DIR "rec"           /* the sampler's recordings */
+#define AUDIO_TXT "audio.txt"   /* brickio's choices: the device, the buffer, for each interface */
 
 static uint64_t now_us(void)
 {
@@ -66,6 +70,14 @@ static int env_int(const char *name, int def)
 
 /* ------------------------------------------------------------- audio */
 
+/* Two paths. brickio (lib/brickio, the default): a USB interface straight
+ * through ALSA from one real-time thread, both ways on one interface (DUPLEX:
+ * its input for the sampler, a period in and out), the speaker through SDL
+ * otherwise; the device, buffer and latency its, kept in audio.txt. SDL
+ * (CS_AUDIO_PATH=sdl): the output alone, as before brickio. The engine makes
+ * 16-bit stereo either way, so it sounds the same. */
+static int use_bio;
+static pthread_mutex_t bio_mx;
 static SDL_AudioDeviceID dev;
 static char dev_name[128]; /* "" is the system's own output */
 static int rate, bufsz;
@@ -74,15 +86,39 @@ static int rate, bufsz;
 static pthread_mutex_t dev_mx = PTHREAD_MUTEX_INITIALIZER;
 static void lock(void)
 {
+    if (use_bio) {
+        pthread_mutex_lock(&bio_mx);
+        return;
+    }
     pthread_mutex_lock(&dev_mx);
     if (dev)
         SDL_LockAudioDevice(dev);
 }
 static void unlock(void)
 {
+    if (use_bio) {
+        pthread_mutex_unlock(&bio_mx);
+        return;
+    }
     if (dev)
         SDL_UnlockAudioDevice(dev);
     pthread_mutex_unlock(&dev_mx);
+}
+
+/* one block of the engine, the audio lock held: the audio clock told where it
+ * is, the sampler given the block (and the input, and the leading Brick's
+ * sound over the link with its position) */
+static int link_rx; /* a leading Brick's sound can come in on the bottom port */
+static void render(const float *in, int16_t *s, int frames)
+{
+    static float lk[2 * 2048];
+    double p0 = engine_position(), spf = engine_steps_per_frame(), lpos = -1.0;
+    engine_render(s, frames);
+    aclock_made(frames, engine_position(), engine_steps_per_frame());
+    int lrx = link_rx && frames <= 2048; /* (brickio's blocks are; the SDL path's at most CS_BUFFER) */
+    if (lrx)
+        midi_link_pull(lk, frames, &lpos);
+    sampler_audio(in, lrx ? lk : NULL, lpos, s, frames, p0, spf);
 }
 
 static void audio_cb(void *ud, Uint8 *stream, int len)
@@ -90,12 +126,74 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
     (void)ud;
     uint64_t t0 = perf_audio_begin(len / 4); /* the log's load and dropout counters */
     aclock_request(t0, len / 4);
-    engine_render((int16_t *)stream, len / 4);
-    aclock_made(len / 4, engine_position(), engine_steps_per_frame());
+    render(NULL, (int16_t *)stream, len / 4);
     perf_audio_output((const int16_t *)stream, len / 4); /* JUMP: a click made here */
     leds_audio((const short *)stream, len / 4);          /* the top bar's level meter (Brick Pro) */
     perf_audio_end(t0);
 }
+
+/* brickio's audio thread: stereo float in and out. The engine's 16-bit block
+ * turned to float at the very end (the same samples as on the SDL path) */
+#define BIO_MAX 2048
+static void bio_process(const float *in, float *out, int frames, int have_input, void *ud)
+{
+    (void)ud;
+    static int16_t s[2 * BIO_MAX];
+    uint64_t t0 = perf_audio_begin(frames);
+    aclock_request(t0, frames);
+    for (int done = 0; done < frames;) {
+        int n = frames - done < BIO_MAX ? frames - done : BIO_MAX;
+        pthread_mutex_lock(&bio_mx);
+        render(have_input ? in + 2 * done : NULL, s, n);
+        pthread_mutex_unlock(&bio_mx);
+        for (int i = 0; i < 2 * n; i++)
+            out[2 * done + i] = s[i] * (1.f / 32768.f);
+        perf_audio_output(s, n);
+        leds_audio(s, n);
+        done += n;
+    }
+    perf_audio_end(t0);
+}
+
+/* what the sound takes to be heard, and the input's lateness for the sampler:
+ * brickio's figure for the interface open (measured from the driver's own
+ * queues once DUPLEX has run 3 s), CS_SYNC_LATENCY (frames) over it. Each
+ * Brick times its clock out, the link and the phase lock to its own heard
+ * sound, so Bricks with different interfaces meet at the speakers */
+static float lat_ms = -1.f;
+static void bio_latency(void)
+{
+    UaStatus st;
+    ua_status(&st);
+    float ms = st.latency_ms;
+    if (fabsf(ms - lat_ms) < 0.5f)
+        return;
+    lat_ms = ms;
+    int lat = env_int("CS_SYNC_LATENCY", (int)(ms * rate / 1000.f));
+    lock();
+    aclock_init(rate, lat);
+    unlock();
+    midi_set_latency((float)lat / rate);
+    /* the input: the round trip (what was heard comes back in that much later), and a trim by ear */
+    sampler_set_latency(lat + env_int("CS_REC_OFFSET", 0) * rate / 1000);
+    perf_log("AUDIO", "latency %.1f ms (%s): the clock out and the sampler's input lined up by it", ms,
+             st.duplex ? "measured, DUPLEX" : "the buffers");
+}
+
+static int bio_have_input(void)
+{
+    UaStatus st;
+    ua_status(&st);
+    return st.have_input;
+}
+
+static void bio_opened(int frames, const char *device)
+{
+
+    perf_audio_open(rate, frames, device);
+    lat_ms = -1.f; /* worked out again at the next frame */
+}
+
 
 static int is_usb_name(const char *n)
 {
@@ -625,6 +723,10 @@ static void on_event(const SDL_Event *e)
         break;
     case SDL_AUDIODEVICEADDED:
     case SDL_AUDIODEVICEREMOVED:
+        if (use_bio) {
+            ua_event(e); /* brickio follows the interfaces itself */
+            break;
+        }
         if (!e->adevice.iscapture)
             audio_hotplug();
         break;
@@ -821,7 +923,18 @@ int main(int argc, char **argv)
 #endif
 
     rate = env_int("CS_RATE", 48000);
-    bufsz = env_int("CS_BUFFER", 512); /* the A53s have the time: half the Miyoo's delay */
+    bufsz = env_int("CS_BUFFER", 512); /* the SDL path's; the A53s have the time: half the Miyoo's delay */
+    {
+        const char *p = getenv("CS_AUDIO_PATH");
+        use_bio = !(p && !strcasecmp(p, "sdl"));
+    }
+    if (use_bio)
+        ua_pin("CS"); /* the audio threads get cores of their own: before SDL's threads, the loader's and MIDI's */
+    pthread_mutexattr_t ma;
+    pthread_mutexattr_init(&ma);
+    pthread_mutexattr_setprotocol(&ma, PTHREAD_PRIO_INHERIT); /* the screen holding it lends the sound its priority */
+    pthread_mutex_init(&bio_mx, &ma);
+    pthread_mutexattr_destroy(&ma);
 
     /* 1 GB: the whole program and its samples stay in memory, so the sound
      * never waits for a page to be read back in */
@@ -906,14 +1019,31 @@ int main(int argc, char **argv)
     open_joysticks();
     switch_open();
 
-    int have_audio = open_output(pick_output(), 0);
-    if (have_audio) {
+    sampler_init(rate, REC_DIR);
+    int have_audio = 0;
+    if (use_bio) {
+        /* both ways: a USB interface's input is the sampler's (DUPLEX on one interface) */
+        UaConfig ac = {.app = "CS", .process = bio_process, .log = perf_log, .settings = AUDIO_TXT, .opened = bio_opened,
+                       .rate = rate};
         ui_lock = lock;
         ui_unlock = unlock;
-        SDL_PauseAudioDevice(dev, 0);
+        ui_audio_input = bio_have_input;
+        ua_start(&ac);
+        have_audio = 1;
+        perf_log("AUDIO", "path: brickio (lib/brickio %s); CS_AUDIO_PATH=sdl for the old one", CS_BRICKIO);
     }
-    else
-        fprintf(stderr, "no audio: %s\n", SDL_GetError());
+    else {
+        have_audio = open_output(pick_output(), 0);
+        if (have_audio) {
+            ui_lock = lock;
+            ui_unlock = unlock;
+            SDL_PauseAudioDevice(dev, 0);
+            sampler_set_latency(bufsz); /* no input on this path: only resampling */
+        }
+        else
+            fprintf(stderr, "no audio: %s\n", SDL_GetError());
+        perf_log("AUDIO", "path: SDL (CS_AUDIO_PATH=sdl)");
+    }
     /* the screen below the sound */
     if (setpriority(PRIO_PROCESS, 0, 10) != 0)
         fprintf(stderr, "could not lower the screen's priority\n");
@@ -930,13 +1060,15 @@ int main(int argc, char **argv)
     fprintf(stderr, "leds: %s\n", leds_start() ? "F1/F2 show the mute scenes, the top bar the beat, lr the level"
                                                 : "not driven (no led_anim, or CS_LEDS=0)");
 #endif
-    sync_init();
-    /* the clock out leaves as the sound is heard, the device's buffer behind the engine */
+    sync_init(wifi_clock()); /* brickio's Wi-Fi sync, on the engine */
+    /* the clock out leaves as the sound is heard, the device's buffer behind the engine (brickio's
+     * path: its own figure, bio_latency) */
     midi_set_latency((float)bufsz / rate);
+    if (use_bio)
+        bio_latency();
     if (env_int("CS_MIDI", 1)) {
-        midi_start(-1);
-        /* the bottom port as a clock link: a Brick with a hub can lead this one (link.h) */
-        link_follow_start();
+        midi_io_start(); /* brickio's reader, the clock thread, and the Brick link on the bottom port */
+        link_rx = 1;
     }
     int update_auto = env_int("CS_UPDATE", 1) != 0, update_tries = 0;
     if (update_auto) {
@@ -957,6 +1089,10 @@ int main(int argc, char **argv)
         int mch, mcc, mv;
         while (midi_take_cc(&mch, &mcc, &mv))
             ui_midi_cc(mch, mcc, mv);
+        midi_tick();
+        char rmsg[64];
+        if (sampler_poll(lock, unlock, rmsg, sizeof rmsg))
+            ui_notice(rmsg);
         Uint32 now = SDL_GetTicks();
         ui_tick((int)(now - last));
         last = now;
@@ -966,6 +1102,14 @@ int main(int argc, char **argv)
             continue;
         }
         sync_poll(now_us());
+        if (use_bio) {
+            int notes = ua_tick(); /* the watchdog, hot-plug, the buffer */
+            char nb[96];
+            for (int bit = 1; bit <= UA_NOTE_REOPEN; bit <<= 1)
+                if ((notes & bit) && ua_note_text(bit, nb, sizeof nb))
+                    ui_notice(nb);
+            bio_latency();
+        }
         static int sw_frame;
         if (sw_frame++ % 3 == 0) /* the side switch, 10 times a second */
             switch_poll();
@@ -997,10 +1141,11 @@ int main(int argc, char **argv)
     save_song();
     switch_close();
     leds_stop();
-    link_follow_stop(); /* the bottom port given back */
-    midi_stop();
+    midi_io_stop(); /* STOP out, the bottom port given back */
     sync_close();
-    if (dev)
+    if (use_bio)
+        ua_stop();
+    else if (dev)
         SDL_CloseAudioDevice(dev);
     SDL_Quit();
     breaks_free();

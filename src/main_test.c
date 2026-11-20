@@ -5,6 +5,7 @@
  * MIDI clock in and out and the Brick Pro's sticks.
  *
  * usage: cs_test OUTDIR [APP_DIR]   (APP_DIR holds breaks/ and bass/) */
+#include <dirent.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -15,6 +16,7 @@
 #include <unistd.h>
 
 #include "aclock.h"
+#include "sampler.h"
 #include "breaks.h"
 #include "engine.h"
 #include "gfx.h"
@@ -60,8 +62,9 @@ static const Ev script[] = {
     SHOT(11400, "pattern_edit"),
     /* CHOP page: BRK2, bits down to 6, compressor up, filter */
     PRESS(12000, BTN_R1), PRESS(12100, BTN_RIGHT),
-    /* up through the SET stop (above the params) and round -> BITS */
-    PRESS(12150, BTN_UP), PRESS(12200, BTN_UP), PRESS(12300, BTN_UP), PRESS(12400, BTN_UP),
+    /* up through the SET, CHOP and SAMPLE stops (above the params) and round -> BITS */
+    PRESS(12150, BTN_UP), PRESS(12200, BTN_UP), PRESS(12250, BTN_UP), PRESS(12300, BTN_UP), PRESS(12350, BTN_UP),
+    PRESS(12400, BTN_UP),
     {12500, BTN_Y, 1, NULL}, {13600, BTN_Y, 0, NULL},
     PRESS(13700, BTN_DOWN), PRESS(13800, BTN_DOWN), /* -> COMP */
     {13900, BTN_X, 1, NULL}, {15200, BTN_X, 0, NULL},
@@ -174,6 +177,7 @@ static double corr(const float *a, const float *b, int n)
 }
 
 /* render n frames to a mono float buffer (left channel) */
+static void nopf(void) {}
 static UpdateStatus fake_update; /* the update prompt, as if v9.9.9 were out */
 static void fake_install(void)
 {
@@ -222,7 +226,7 @@ static void sim_sync(int echo, double *mean_ms, double *worst_ms, float *delay)
     engine_init(RATE);
     song.bpm = 97.f;
     song.sync_mode = SYNC_FOLLOW;
-    sync_core_init(100);
+    sync_core_init(wifi_clock(), 100);
     aclock_init(RATE, 0);
     static int16_t pcm[2 * 1024];
     SimPkt q[64];
@@ -300,7 +304,7 @@ static void sim_sync(int echo, double *mean_ms, double *worst_ms, float *delay)
     *worst_ms = worst;
     *delay = sync_status()->delay_ms;
     engine_set_rate(1.0);
-    sync_core_init(1);
+    sync_core_init(wifi_clock(), 1);
 }
 
 int main(int argc, char **argv)
@@ -331,7 +335,7 @@ int main(int argc, char **argv)
     /* ---- the scripted session */
     song_default();
     ui_init();
-    sync_core_init(1);
+    sync_core_init(wifi_clock(), 1);
     int frames = TOTAL_MS * RATE / 1000;
     int16_t *pcm = malloc(frames * 4);
     int ev = 0, block = RATE / 100; /* 10 ms */
@@ -891,18 +895,18 @@ int main(int argc, char **argv)
     {
         song_default();
         song.sync_mode = SYNC_AUTO;
-        sync_core_init(100);
+        sync_core_init(wifi_clock(), 100);
         uint8_t pkt[SYNC_PKT_LEN];
         float save_bpm = song.bpm;
         song.bpm = 140.f;
         song.sync_mode = SYNC_LEAD;
-        sync_core_init(5);
+        sync_core_init(wifi_clock(), 5);
         sync_make_packet(pkt, 1000);
         song.bpm = save_bpm;
         song.sync_mode = SYNC_AUTO;
-        sync_core_init(100);
+        sync_core_init(wifi_clock(), 100);
         sync_handle_packet(pkt, sizeof pkt, 2000);
-        printf("sync: bpm=%.1f following=%d\n", song.bpm, sync_status()->have_leader);
+        printf("sync: bpm=%.1f following=%d\n", song.bpm, sync_status()->following);
     }
 
     /* ---- sync timing over a slow, uneven network */
@@ -2376,6 +2380,142 @@ int main(int argc, char **argv)
                "remembered %d (want 1: %d)\n",
                n, list, breaks_find_set("EMPTY") < 0, tidied, kept, to_seta, n_seta, to_kits, n_kits, in_range,
                loud > 0.05, remembered, ok);
+    }
+    /* the sampler: 2 bars at 170 BPM while playing, resampled (the output) and from the input (the output
+     * come back 1234 frames late, a round trip), each from the next bar line, exactly 2 bars long; cut on
+     * its own, swapped into BRK1 as REC1 while the music plays, kept in rec/; then cut again, live */
+    {
+        char rec[600];
+        snprintf(rec, sizeof rec, "%s/rec", out);
+        mkdir(rec, 0755);
+        DIR *dd = opendir(rec);
+        struct dirent *de;
+        while (dd && (de = readdir(dd)))
+            if (de->d_name[0] != '.') {
+                char p[1200];
+                snprintf(p, sizeof p, "%s/%s", rec, de->d_name);
+                unlink(p);
+            }
+        if (dd)
+            closedir(dd);
+        sampler_init(RATE, rec);
+        sampler_sync_mode(1);
+        song_default();
+        song.bpm = 170.f;
+        engine_set_playing(1);
+        enum { LAG = 1234, DL = 2345, BLK = 256, MAXF = RATE * 8 };
+        static int16_t s16[2 * BLK];
+        static float hist[MAXF], fin[2 * BLK], ring[2 * (LAG + BLK)], lnk[2 * BLK];
+        static double hpos[MAXF];
+        int ok_all = 1;
+        const int want = (int)llround(2 * 16 * 15.0 * RATE / 170.0);
+        /* the third: the leading Brick's sound over the link, 2345 frames on the way, each block with
+         * the music's position of its first frame (the sender's) */
+        for (int pass = 0; pass < 3; pass++) {
+            int src = pass == 2 ? SRC_LINK : pass ? SRC_IN : SRC_OUT;
+            sampler_set_latency(src == SRC_IN ? LAG : 0);
+            memset(ring, 0, sizeof ring);
+            int nh = 0, rp = 0;
+            /* a bar and a bit in, so the next bar line is ahead */
+            for (int k = 0; k < 40; k++) {
+                double p0 = engine_position();
+                engine_render(s16, BLK);
+                (void)p0;
+            }
+            int armed = sampler_arm(0, 2, src);
+            while (sampler_state() != REC_CHOPPING && nh + BLK < MAXF) {
+                double p0 = engine_position(), spf = engine_steps_per_frame();
+                engine_render(s16, BLK);
+                /* the input: what was played LAG frames ago */
+                for (int i = 0; i < BLK; i++) {
+                    int w = (rp + i) % (LAG + BLK);
+                    ring[2 * w] = s16[2 * i] / 32768.f, ring[2 * w + 1] = s16[2 * i + 1] / 32768.f;
+                    int r = (rp + i + BLK) % (LAG + BLK); /* LAG frames behind what was just written */
+                    fin[2 * i] = ring[2 * r], fin[2 * i + 1] = ring[2 * r + 1];
+                }
+                rp = (rp + BLK) % (LAG + BLK);
+                for (int i = 0; i < BLK; i++)
+                    hist[nh + i] = (s16[2 * i] + s16[2 * i + 1]) * (0.5f / 32768.f), hpos[nh + i] = p0 + i * spf;
+                /* the link: what was made DL frames ago, and where it falls (none yet: silence, -1) */
+                double lpos = nh >= DL ? hpos[nh - DL] : -1.0;
+                for (int i = 0; i < BLK; i++)
+                    lnk[2 * i] = lnk[2 * i + 1] = nh + i >= DL ? hist[nh + i - DL] : 0.f;
+                sampler_audio(fin, lnk, lpos, s16, BLK, p0, spf);
+                nh += BLK;
+            }
+            char msg[64] = "";
+            int in = sampler_poll(nopf, nopf, msg, sizeof msg);
+            int bi = -1;
+            for (int i = 0; i < nbanks; i++)
+                if (!strcmp(banks[i].name, "REC1"))
+                    bi = i;
+            /* where it should have started: the first bar line after it was armed, as the sound made */
+            int f0 = 0;
+            /* (the input's: what was heard LAG frames before it came in) */
+            double bar = ceil((hpos[0] - (src == SRC_IN ? LAG * (hpos[1] - hpos[0]) : 0.0)) / 16.0 - 1e-9) * 16.0;
+            while (f0 < nh && hpos[f0] < bar)
+                f0++;
+            double c = bi >= 0 && f0 + want <= nh ? corr(banks[bi].data, hist + f0, want) : 0.0;
+            double c1 = bi >= 0 && f0 + 1 + want <= nh ? corr(banks[bi].data, hist + f0 + 1, want) : 0.0;
+            int ok = armed && in && bi >= 0 && banks[bi].len == want && banks[bi].steps == 32 &&
+                     fabsf(banks[bi].bpm - 170.f) < 0.01f && song.pat.param[0][B_BANK] == bi && c > 0.9999 && c > c1;
+            printf("sampler %s: armed %d, in %d (%s), REC1 %d frames (want %d), %d steps, %.2f BPM, on the bar line %d "
+                   "(match %.5f, a frame later %.5f), BRK1 plays it %d\n",
+                   src == SRC_IN ? "input, 1234 frames late" : src == SRC_LINK ? "link, 2345 frames on the way" : "resample", armed, in, msg, bi >= 0 ? banks[bi].len : 0, want,
+                   bi >= 0 ? banks[bi].steps : 0, bi >= 0 ? banks[bi].bpm : 0.f, c > c1, c, c1, song.pat.param[0][B_BANK] == bi);
+            ok_all &= ok;
+        }
+        /* playing on from it */
+        float tail[RATE / 2];
+        render_mono(tail, RATE / 2);
+        float pk = 0.f;
+        for (int i = 0; i < RATE / 2; i++)
+            pk = fmaxf(pk, fabsf(tail[i]));
+        char p[1200];
+        snprintf(p, sizeof p, "%s/REC1_2BAR.wav", rec);
+        int kept = access(p, F_OK) == 0;
+        int bi = song.pat.param[0][B_BANK];
+        int cut = sampler_chop(0, CHOP_16, nopf, nopf) && banks[bi].nslices == 32 && banks[bi].chop == CHOP_16;
+        int n16 = banks[bi].nslices;
+        snprintf(p, sizeof p, "%s/REC1_2BAR_16THS.wav", rec);
+        int renamed = access(p, F_OK) == 0;
+        int cut_back = sampler_chop(0, CHOP_HITS, nopf, nopf) && banks[bi].chop == CHOP_HITS;
+        printf("sampler kept: %d, plays on %d (peak %.2f), cut at 16ths live %d (%d slices), kept so %d, back to its hits %d "
+               "(want 1: %d)\n",
+               kept, pk > 0.05f, pk, cut, n16, renamed, cut_back, ok_all && kept && pk > 0.05f && cut && renamed && cut_back);
+        /* the CHOP page's SAMPLE stop, by the buttons: no input here, so A says so; B to RESAMPLE, A arms
+         * it (playing: from the next bar), A again calls it off. Its screen, and the CHOP stop's */
+        static uint32_t rfb[SCREEN_W * SCREEN_H];
+        ui_set_page(PAGE_CHOP);
+        ui_set_chop_channel(0);
+        ui_set_chop_row(-3);
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        int refused = sampler_state() == REC_IDLE;
+        ui_button(BTN_B, 1), ui_button(BTN_B, 0);
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        int armed = sampler_state() == REC_ARMED;
+        for (int k = 0; k < 4; k++) { /* a little way in, so the screen shows it */
+            double p0 = engine_position(), spf = engine_steps_per_frame();
+            engine_render(s16, BLK);
+            sampler_audio(NULL, NULL, -1.0, s16, BLK, p0, spf);
+        }
+        ui_draw(rfb);
+        snprintf(p, sizeof p, "%s/sampler.ppm", out);
+        write_ppm(p, rfb);
+        ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+        double p0 = engine_position(), spf = engine_steps_per_frame();
+        engine_render(s16, BLK);
+        sampler_audio(NULL, NULL, -1.0, s16, BLK, p0, spf);
+        int off = sampler_state() == REC_IDLE;
+        ui_button(BTN_DOWN, 1), ui_button(BTN_DOWN, 0); /* SAMPLE -> CHOP */
+        ui_button(BTN_X, 1), ui_button(BTN_X, 0);       /* HITS -> 16THS, live */
+        int cut16 = banks[song.pat.param[0][B_BANK]].chop == CHOP_16;
+        ui_draw(rfb);
+        snprintf(p, sizeof p, "%s/chop_cut.ppm", out);
+        write_ppm(p, rfb);
+        printf("sampler buttons: no input said 1, refused %d; resample armed %d, called off %d; CHOP X cuts at 16ths %d (want 1: %d)\n",
+               refused, armed, off, cut16, refused && armed && off && cut16);
+        engine_set_playing(0);
     }
     breaks_free();
     return 0;

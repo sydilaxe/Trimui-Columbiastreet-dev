@@ -21,17 +21,24 @@ TARGET := aarch64-linux-gnu.2.28
 CPU    := cortex_a53
 SDL_INC := third_party/SDL2-2.30.9-headers
 
-SRC    := src/engine.c src/breaks.c src/ui.c src/gfx.c src/sync.c src/aclock.c
-HDR    := src/engine.h src/breaks.h src/ui.h src/gfx.h src/sync.h src/aclock.h src/font_data.h src/update.h
+# lib/brickio: the TrimUI apps' shared USB audio, MIDI and clock, a copy of sydilaxe/Brickio-dev's src/ at
+# lib/brickio/BRICKIO_VERSION (update it with Brickio-dev's tools/brickio-sync.sh, never by editing it here)
+BIO    := lib/brickio
+BIO_CLOCK := $(BIO)/aclock.c $(BIO)/perflog.c $(BIO)/link.c $(BIO)/linkpos.c $(BIO)/mclock.c $(BIO)/mclockio.c $(BIO)/midi.c $(BIO)/sync.c \
+             $(BIO)/blinkauto.c $(BIO)/blinkio.c $(BIO)/blink.c $(BIO)/aring.c
+BIO_AUDIO := $(BIO)/usbaudio.c $(BIO)/duplex.c
+BIOH   := $(wildcard $(BIO)/*.h)
+SRC    := src/engine.c src/breaks.c src/ui.c src/gfx.c src/sampler.c
+HDR    := src/engine.h src/breaks.h src/ui.h src/gfx.h src/sampler.h src/font_data.h src/update.h $(BIOH)
 NET    := src/net.c src/update.c # the self-updater, on the device and in build/cs_update
-PLAT   := src/midi.c src/link.c src/leds.c src/perflog.c src/main_trimui.c
-PLATH  := src/midi.h src/link.h src/net.h src/leds.h src/perflog.h
-CFLAGS := -O2 -std=gnu11 -Wall -Wextra -fno-math-errno
+PLAT   := src/midi.c src/leds.c src/main_trimui.c $(BIO_CLOCK) $(BIO_AUDIO)
+PLATH  := src/midi.h src/net.h src/leds.h
+CFLAGS := -O2 -std=gnu11 -Wall -Wextra -Wno-missing-field-initializers -fno-math-errno -I$(BIO)
 APP    := dist/ColumbiaStreet
 SAMPLES := $(APP)/breaks/DIRT/AMEN_153bpm.wav
 # the app's version: CS_VERSION in src/engine.h, or VERSION=x.y.z (CI passes the release tag's)
 VERSION ?= $(shell sed -n 's/^\#define CS_VERSION "\([^"]*\)".*/\1/p' src/engine.h)
-VERDEF := -DCS_VERSION='"$(VERSION)"'
+VERDEF := -DCS_VERSION='"$(VERSION)"' -DCS_BRICKIO='"$(shell cat $(BIO)/BRICKIO_VERSION)"'
 
 MAGICK := $(shell command -v magick 2>/dev/null || echo convert)
 
@@ -56,9 +63,9 @@ src/font_data.h: tools/mkfont.py
 	python3 tools/mkfont.py /usr/share/fonts/google-noto/NotoSansMono-Bold.ttf $@
 
 # a stand-in for the device's libSDL2-2.0.so.0, to link against (the device has the real one)
-build/sdl2/libSDL2-2.0.so.0: tools/mksdlstub.py src/main_trimui.c
+build/sdl2/libSDL2-2.0.so.0: tools/mksdlstub.py src/main_trimui.c $(BIO_AUDIO)
 	@mkdir -p build/sdl2
-	python3 tools/mksdlstub.py build/sdl2/sdl2_stub.c src/main_trimui.c
+	python3 tools/mksdlstub.py build/sdl2/sdl2_stub.c src/main_trimui.c $(BIO_AUDIO)
 	$(ZIG) cc -target $(TARGET) -shared -Wl,-soname,libSDL2-2.0.so.0 -o $@ build/sdl2/sdl2_stub.c
 
 # Mbed TLS (Apache-2.0) for the updater's HTTPS, from a pinned release, not committed; each
@@ -88,7 +95,7 @@ build/host/libmbedtls.a: $(MBED_SRC)
 	$(MAKE) -f tools/mbedtls.mk OUT=build/host MBED_DIR=$(MBED_DIR) CC=cc AR=ar MBED_CFLAGS=-O2
 
 DEVICE_CC = $(ZIG) cc -target $(TARGET) -mcpu=$(CPU) $(CFLAGS) $(VERDEF) -I$(SDL_INC) -I$(MBED_DIR)/include -Isrc
-DEVICE_LINK = build/zig/libmbedtls.a build/sdl2/libSDL2-2.0.so.0 -lm -lpthread -Wl,--allow-shlib-undefined -s
+DEVICE_LINK = build/zig/libmbedtls.a build/sdl2/libSDL2-2.0.so.0 -lm -lpthread -ldl -Wl,--allow-shlib-undefined -s
 
 build/brick/columbia: $(SRC) $(NET) $(PLAT) $(HDR) $(PLATH) build/version build/sdl2/libSDL2-2.0.so.0 build/zig/libmbedtls.a
 	@mkdir -p build/brick
@@ -98,9 +105,9 @@ build/brickpro/columbia: $(SRC) $(NET) $(PLAT) $(HDR) $(PLATH) build/version bui
 	@mkdir -p build/brickpro
 	$(DEVICE_CC) -DCS_BRICKPRO -o $@ $(SRC) $(NET) $(PLAT) $(DEVICE_LINK)
 
-build/cs_test: $(SRC) src/midi.c src/link.c src/leds.c src/perflog.c src/main_test.c $(HDR) src/midi.h src/link.h src/leds.h src/perflog.h build/version
+build/cs_test: $(SRC) src/midi.c src/leds.c src/main_test.c $(BIO_CLOCK) $(HDR) src/midi.h src/leds.h build/version
 	@mkdir -p build
-	cc $(CFLAGS) $(VERDEF) -o $@ $(SRC) src/midi.c src/link.c src/leds.c src/perflog.c src/main_test.c -lm -lpthread
+	cc $(CFLAGS) $(VERDEF) -o $@ $(SRC) src/midi.c src/leds.c src/main_test.c $(BIO_CLOCK) -lm -lpthread
 
 test: build/cs_test $(SAMPLES)
 	@mkdir -p build/test
@@ -127,7 +134,8 @@ build/ColumbiaStreet-mustardos-%.muxapp: build/%/columbia $(APP)/VERSION $(APP)/
 	cp -r $(APP)/. "build/mux-$*/$(MUX_APP)/"
 	cp -r $(MUX)/. "build/mux-$*/$(MUX_APP)/"
 	rm -f "build/mux-$*/$(MUX_APP)/"*.sav* "build/mux-$*/$(MUX_APP)/log.txt" "build/mux-$*/$(MUX_APP)/leds_saved.txt" \
-		"build/mux-$*/$(MUX_APP)/sysinfo.txt" "build/mux-$*/$(MUX_APP)/breakset.txt"
+		"build/mux-$*/$(MUX_APP)/sysinfo.txt" "build/mux-$*/$(MUX_APP)/breakset.txt" "build/mux-$*/$(MUX_APP)/audio.txt"
+	rm -rf "build/mux-$*/$(MUX_APP)/rec"
 	cp build/$*/columbia "build/mux-$*/$(MUX_APP)/"
 	echo $* > "build/mux-$*/$(MUX_APP)/DEVICE"
 	chmod +x "build/mux-$*/$(MUX_APP)/launch.sh" "build/mux-$*/$(MUX_APP)/mux_launch.sh" "build/mux-$*/$(MUX_APP)/sysinfo.sh" \

@@ -463,7 +463,8 @@ static unsigned long rd32(const unsigned char *p)
 /* files the user owns: an update never writes them */
 static int keep_users(const char *rel)
 {
-    return !strncmp(rel, "columbia.sav", 12) || !strcmp(rel, "log.txt");
+    /* the song, the log, brickio's audio choices and the sampler's recordings */
+    return !strncmp(rel, "columbia.sav", 12) || !strcmp(rel, "log.txt") || !strcmp(rel, "audio.txt") || !strncmp(rel, "rec/", 4);
 }
 
 /* a path inside the app folder: relative, no "..", no empty parts, at most three deep */

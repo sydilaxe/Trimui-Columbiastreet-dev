@@ -1819,6 +1819,22 @@ void engine_banks_changed(void)
     song_clamp();
 }
 
+void engine_bank_replaced(int i)
+{
+    const Bank *b = &banks[i];
+    for (int v = 0; v < NBRK; v++) {
+        for (int k = 0; k < 2; k++)
+            if (brk[v].h[k].b == b)
+                brk[v].h[k].on = 0, brk[v].h[k].b = NULL;
+        if (song.pat.param[v][B_BANK] == i) {
+            brk[v].rat_left = 0;
+            live.slice[v] = 0;
+            live.play_pos[v] = -1.f;
+        }
+    }
+    song_clamp();
+}
+
 /* The default: the Amen chopped across the four channels over a sub */
 /* the mute scenes until one is saved over: M1 (F1) the bass alone, every
  * break channel muted; M2 (F2) the breaks alone, the bass muted */

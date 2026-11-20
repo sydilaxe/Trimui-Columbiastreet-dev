@@ -21,14 +21,32 @@ minutes after the last press): `idle_inhibit` re-set every 2 s and `caffeine`, g
 is the same in Jaffedrone, Columbia Street, HI5, RadioScan and Conduit; keep the copies the same.
 
 The platform layer is `src/main_trimui.c` (SDL2: video scaled 1.6x from the 640x480 pages, the
-buttons of MustardOS's "muOS-Keys" controller (the Brick's or the Brick Pro's numbering, found at run time), USB audio
-with hot-plug, the sticks) and `src/midi.c` (USB MIDI clock in
-and out through ALSA raw MIDI), with `src/link.c` (the clock link between Bricks: a follower's bottom
-port as a USB gadget through configfs and FunctionFS, found and driven by the leader through usbfs;
-`make test` checks its descriptors, the leader's search against a stand-in sysfs, and how tightly a
-follower holds the leader's position). The engine, the pages and Wi-Fi sync are shared with the Miyoo
-version; keep the engine the same sound as there (with the sticks at rest, `build/test/session.wav`
-matches the Miyoo harness's sample for sample).
+buttons of MustardOS's "muOS-Keys" controller (the Brick's or the Brick Pro's numbering, found at run time), the
+sticks) and `src/midi.c` (the notes, CCs and the SONG page's MIDI setting). Audio, MIDI I/O, the clock
+and the Brick link are `lib/brickio`, a copy of sydilaxe/Brickio-dev's `src/` at the commit in
+`lib/brickio/BRICKIO_VERSION`: update it with Brickio-dev's `tools/brickio-sync.sh`, never by editing it here
+(a change belongs in brickio, where Conduit and TrimFX get it too). The sound goes through brickio's
+`usbaudio` (`bio_process`, holding `bio_mx`: a USB interface straight through ALSA, DUPLEX on one interface
+both ways, the speaker through SDL otherwise); `CS_AUDIO_PATH=sdl` keeps the old SDL path (`audio_cb`):
+keep both working. The engine makes 16-bit stereo on both. MIDI is brickio's reader and its musical clock
+wired by `mclockio` (`mclock` follows, leads and passes on the clock over MIDI and the link; a 1 ms
+real-time clock thread); the clock, the link and the sampler's input are all timed to the heard sound
+from brickio's latency for the open interface (`bio_latency`). `make test` checks the link's descriptors,
+the leader's search against a stand-in sysfs, and how tightly a follower holds the leader's position, and
+brickio's own tests check the rest (`make test` there). Wi-Fi sync is brickio's `sync` (HI5S, the same packets
+as the Miyoo version's and the other apps'), on the engine through `wifi_clock()` in `src/midi.c`. The engine
+and the pages are shared with the Miyoo version; keep the engine the same sound as there (with the sticks at rest,
+`build/test/session.wav` matches the Miyoo harness's sample for sample).
+
+The sampler (`src/sampler.c`, the CHOP page's SAMPLE stop, and its CHOP stop to cut a break again live) is
+new on the TrimUI: it records the input or the output into a break channel in time (from the next bar line,
+exactly its bars long, the input lined up by the round trip), cuts it on a thread of its own and swaps it
+in as RECn under the audio lock (`engine_bank_replaced`), and keeps it in `rec/`, loaded after every set
+(`breaks_set_rec_dir`). The LINK source is a leading Brick's sound (Jaffedrone sends it) over the Brick link's
+data channel beside the clock link (`link_follow_data`, brickio's `blinkauto`, in `src/midi.c`), each block
+with the sender's position, so it starts on the sender's bar line. `make test` records all three sources
+(the input 1234 frames late, the link 2345 frames on the way) and checks they start on the bar line to the
+sample. `rec/` and `audio.txt` are the user's: the updater never writes them (`keep_users`).
 
 The mute scenes (M1, M2: the mixer's mutes and solos, saved in the song after the v0.3 fields;
 F1 / F2, or R2 + L1 / R1 where there are no function buttons) live in `src/ui.c` and are new on the
