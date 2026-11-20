@@ -14,6 +14,7 @@
 #include "gfx.h"
 #include "link.h"
 #include "midi.h"
+#include "sampler.h"
 #include "sync.h"
 #include "update.h"
 
@@ -46,6 +47,13 @@ static int pat_v, pat_r, chop_v, chop_p, bass_p, mix_v, mix_r, song_cur;
 /* the CHOP page's SET stop (chop_p -1, above the params): the set of breaks
  * X / Y has picked, which A loads; -1 until the stop is first reached */
 static int set_pick = -1;
+/* the CHOP page's SAMPLE stop (chop_p -3) and CHOP stop (-2), above SET: the
+ * length and source of the next recording */
+#define CHOP_TOP -3
+static const int rec_lens[] = {0, 1, 2, 4, 8}; /* bars; 0 FREE */
+#define NREC_LEN 5
+static int rec_len = 2, rec_src = SRC_IN;
+int (*ui_audio_input)(void); /* an input to record from (the main program's) */
 static int song_pending = -1; /* the song waiting for its set to load */
 static int held[BTN_COUNT], hold_ms[BTN_COUNT], rep_ms[BTN_COUNT], rep_n[BTN_COUNT];
 static int b_used; /* B was a modifier this press (PATTERN page) */
@@ -329,7 +337,8 @@ void ui_notice(const char *msg) { say("%s", msg); }
 int ui_quit_requested(void) { return quit; }
 int ui_page(void) { return page; }
 void ui_set_page(int p) { page = p; }
-void ui_set_chop_row(int p) { chop_p = p < -1 ? -1 : p >= NP ? NP - 1 : p; }
+void ui_set_chop_channel(int v) { chop_v = v < 0 ? 0 : v >= NBRK ? NBRK - 1 : v; }
+void ui_set_chop_row(int p) { chop_p = p < CHOP_TOP ? CHOP_TOP : p >= NP ? NP - 1 : p; }
 
 int ui_take_changed(void)
 {
@@ -590,18 +599,99 @@ static void set_action(int b, int repeats)
     }
 }
 
+static void rec_len_name(char *s, int n)
+{
+    int bars = rec_lens[rec_len];
+    if (bars)
+        snprintf(s, (size_t)n, "%d BAR%s", bars, bars > 1 ? "S" : "");
+    else
+        snprintf(s, (size_t)n, "FREE");
+}
+
+/* the SAMPLE stop: X / Y the length, B the source, A records (and stops, or
+ * calls it off) */
+static void sample_action(int b, int repeats)
+{
+    char len[16];
+    int st = sampler_state();
+    switch (b) {
+    case BTN_X:
+    case BTN_Y:
+        rec_len = (rec_len + (b == BTN_X ? 1 : NREC_LEN - 1)) % NREC_LEN;
+        rec_len_name(len, sizeof len);
+        say("SAMPLE: %s", len);
+        return;
+    case BTN_B:
+        if (repeats)
+            return;
+        rec_src = rec_src == SRC_IN ? SRC_OUT : SRC_IN;
+        say(rec_src == SRC_IN ? "SAMPLE THE INPUT" : "RESAMPLE: THE SOUND OF THIS BRICK");
+        return;
+    case BTN_A:
+        if (repeats)
+            return;
+        if (st == REC_ARMED || st == REC_RECORDING) {
+            int free_run = st == REC_RECORDING && !rec_lens[rec_len];
+            sampler_press();
+            say(free_run ? "REC%d: STOPPED, CUTTING..." : "REC%d: CALLED OFF", sampler_channel() + 1);
+            return;
+        }
+        if (st == REC_CHOPPING) {
+            say("REC%d: STILL CUTTING...", sampler_channel() + 1);
+            return;
+        }
+        if (rec_src == SRC_IN && !(ui_audio_input && ui_audio_input())) {
+            say("NO INPUT: PLUG IN A USB INTERFACE, OR B: RESAMPLE");
+            return;
+        }
+        rec_len_name(len, sizeof len);
+        if (!sampler_arm(chop_v, rec_lens[rec_len], rec_src))
+            say("THE SAMPLER IS BUSY");
+        else if (sampler_state() == REC_ARMED)
+            say("REC%d: %s FROM THE NEXT BAR", chop_v + 1, len);
+        else
+            say(rec_lens[rec_len] ? "REC%d: RECORDING %s" : "REC%d: RECORDING, A TO STOP", chop_v + 1, len);
+        return;
+    }
+}
+
+/* the CHOP stop: X / Y cut the channel's break again, live */
+static void recut_action(int b)
+{
+    if ((b != BTN_X && b != BTN_Y) || !nbanks)
+        return;
+    int bi = song.pat.param[chop_v][B_BANK];
+    const Bank *bk = &banks[bi < nbanks ? bi : 0];
+    if (bk->chop == CHOP_CUT) {
+        say("%s IS PRE-CHOPPED: ITS OWN SLICES", bk->name);
+        return;
+    }
+    int style = (bk->chop + (b == BTN_X ? 1 : NCHOP - 1)) % NCHOP;
+    if (sampler_chop(chop_v, style, ui_lock, ui_unlock))
+        say("%s CUT AT %s: %d SLICES", bk->name, chop_name(style), bk->nslices);
+}
+
 static void chop_action(int b, int repeats)
 {
-    if (chop_p < 0 && (b == BTN_X || b == BTN_Y || b == BTN_A)) {
+    if (chop_p == CHOP_TOP && b != BTN_UP && b != BTN_DOWN && b != BTN_LEFT && b != BTN_RIGHT) {
+        sample_action(b, repeats);
+        return;
+    }
+    if (chop_p == CHOP_TOP + 1 && (b == BTN_X || b == BTN_Y)) {
+        if (!repeats)
+            recut_action(b);
+        return;
+    }
+    if (chop_p == -1 && (b == BTN_X || b == BTN_Y || b == BTN_A)) {
         set_action(b, repeats);
         return;
     }
     switch (b) {
     case BTN_UP:
     case BTN_DOWN:
-        /* -1 is the SET stop, above the params */
-        chop_p = wrap(chop_p + 1 + (b == BTN_DOWN ? 1 : -1), NP + 1) - 1;
-        if (chop_p < 0 && breaks_nsets() && (set_pick < 0 || breaks_switch_state() == SWITCH_IDLE))
+        /* above the params: SET (-1), CHOP (-2), SAMPLE (-3) */
+        chop_p = wrap(chop_p - CHOP_TOP + (b == BTN_DOWN ? 1 : -1), NP - CHOP_TOP) + CHOP_TOP;
+        if (chop_p == -1 && breaks_nsets() && (set_pick < 0 || breaks_switch_state() == SWITCH_IDLE))
             set_pick = breaks_set_current() >= 0 ? breaks_set_current() : 0;
         break;
     case BTN_LEFT: chop_v = wrap(chop_v - 1, NBRK); break;
@@ -1309,7 +1399,11 @@ static void draw_footer(void)
         "A:LOAD  X:SAVE  R2+Y:CLEAR",
     };
     const char *hint = hints[page];
-    if (page == PAGE_CHOP && chop_p < 0)
+    if (page == PAGE_CHOP && chop_p == CHOP_TOP)
+        hint = "X/Y:LENGTH  B:INPUT/RESAMPLE  A:REC / STOP";
+    else if (page == PAGE_CHOP && chop_p == CHOP_TOP + 1)
+        hint = "X/Y:CUT IT AGAIN, LIVE  A:PLAY SLICE  B:MUTE";
+    else if (page == PAGE_CHOP && chop_p < 0)
         hint = "^v:PARAMS  X/Y:PICK A SET  A:LOAD IT  B:MUTE";
     if (page == PAGE_SONG && song_cur >= NSLOT)
         hint = song_cur == SG_TEMPO   ? (ts_f == 0 ? "<>:SETTING  X/Y:TEMPO  R2+X:TAP" : "<>:SETTING  X/Y:SYNC MODE")
@@ -1491,9 +1585,46 @@ static void draw_chop(void)
     }
     if (live.play_pos[v] >= 0.f)
         gfx_fill(wx + (int)(ww * live.play_pos[v]), wy, 2, wh, 0xffffff);
+    /* a recording into this channel: how far it has got, over the waveform */
+    int rst = sampler_state();
+    if ((rst == REC_RECORDING || rst == REC_ARMED || rst == REC_CHOPPING) && sampler_channel() == v) {
+        int pw = rst == REC_RECORDING ? (int)(ww * sampler_progress()) : rst == REC_CHOPPING ? ww : 0;
+        gfx_fill(wx, wy, pw, wh, gfx_mix(C_PANEL, 0xff3030, 0.35f));
+        gfx_fill(wx, wy + wh - 4, (int)(ww * sampler_level()), 4, 0xff3030);
+        gfx_text(wx + 8, wy + 4, rst == REC_ARMED ? "ARMED" : rst == REC_RECORDING ? "REC" : "CUTTING", 0xff5050, FONT_SMALL);
+    }
     char info[96];
     int iy = wy + wh + 4;
-    if (chop_p < 0) {
+    if (chop_p == CHOP_TOP) {
+        /* the SAMPLE stop: length, source, and what the sampler is doing */
+        char len[16];
+        rec_len_name(len, sizeof len);
+        gfx_fill(wx, iy - 2, ww, 24, C_PANEL2);
+        gfx_rect(wx, iy - 2, ww, 24, 2, 0xff3030);
+        gfx_text(wx + 8, iy, "SAMPLE", C_TEXT, FONT_SMALL);
+        snprintf(info, sizeof info, "< %s >  %s", len, rec_src == SRC_IN ? "INPUT" : "RESAMPLE");
+        gfx_text(wx + 90, iy, info, C_TEXT, FONT_SMALL);
+        if (rst == REC_ARMED)
+            snprintf(info, sizeof info, "REC%d ARMED: NEXT BAR", sampler_channel() + 1);
+        else if (rst == REC_RECORDING)
+            snprintf(info, sizeof info, "REC%d %d%%", sampler_channel() + 1, (int)(100.f * sampler_progress()));
+        else if (rst == REC_CHOPPING)
+            snprintf(info, sizeof info, "REC%d CUTTING...", sampler_channel() + 1);
+        else
+            snprintf(info, sizeof info, "A: REC INTO %s", voice_names[v]);
+        text_r(wx + ww - 8, iy, info, rst != REC_IDLE ? 0xff5050 : C_DIM, FONT_SMALL);
+    }
+    else if (chop_p == CHOP_TOP + 1) {
+        /* the CHOP stop: how this break is cut */
+        gfx_fill(wx, iy - 2, ww, 24, C_PANEL2);
+        gfx_rect(wx, iy - 2, ww, 24, 2, vcol[v]);
+        gfx_text(wx + 8, iy, "CHOP", C_TEXT, FONT_SMALL);
+        snprintf(info, sizeof info, b->chop == CHOP_CUT ? "%s (ITS FILES)" : "< %s >", chop_name(b->chop));
+        gfx_text(wx + 90, iy, info, C_TEXT, FONT_SMALL);
+        snprintf(info, sizeof info, "%.6s  %d SLICES", b->name, b->nslices);
+        text_r(wx + ww - 8, iy, info, C_DIM, FONT_SMALL);
+    }
+    else if (chop_p < 0) {
         /* the SET stop: the set picked, and whether it is the one in */
         int n = breaks_nsets(), pk = set_pick >= 0 && set_pick < n ? set_pick : breaks_set_current();
         int loading = breaks_switch_state() != SWITCH_IDLE, in = pk == breaks_set_current();

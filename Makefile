@@ -133,7 +133,8 @@ build/ColumbiaStreet-mustardos-%.muxapp: build/%/columbia $(APP)/VERSION $(APP)/
 	cp -r $(APP)/. "build/mux-$*/$(MUX_APP)/"
 	cp -r $(MUX)/. "build/mux-$*/$(MUX_APP)/"
 	rm -f "build/mux-$*/$(MUX_APP)/"*.sav* "build/mux-$*/$(MUX_APP)/log.txt" "build/mux-$*/$(MUX_APP)/leds_saved.txt" \
-		"build/mux-$*/$(MUX_APP)/sysinfo.txt" "build/mux-$*/$(MUX_APP)/breakset.txt"
+		"build/mux-$*/$(MUX_APP)/sysinfo.txt" "build/mux-$*/$(MUX_APP)/breakset.txt" "build/mux-$*/$(MUX_APP)/audio.txt"
+	rm -rf "build/mux-$*/$(MUX_APP)/rec"
 	cp build/$*/columbia "build/mux-$*/$(MUX_APP)/"
 	echo $* > "build/mux-$*/$(MUX_APP)/DEVICE"
 	chmod +x "build/mux-$*/$(MUX_APP)/launch.sh" "build/mux-$*/$(MUX_APP)/mux_launch.sh" "build/mux-$*/$(MUX_APP)/sysinfo.sh" \

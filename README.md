@@ -265,6 +265,21 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
 - **CHOP**: one break channel at a time (left / right). The waveform shows the bank's slices,
   the ones this channel can pick, and the slice playing; the line under it the set and the
   break. Up / down picks a parameter, X / Y change it, A plays the slice, B mutes the channel.
+  - **SAMPLE** (the top stop, up from CHOP): records into this channel while the beat plays.
+    X / Y pick the length: 1, 2, 4 or 8 bars, or FREE. B picks the source: **INPUT** (a USB
+    interface's input: another Brick, a drum machine, a record) or **RESAMPLE** (Columbia Street's
+    own sound). A arms it: playing, a recording in bars starts on the next bar line and is exactly
+    that long at the tempo, so it plays in time with nothing stretched; stopped, or FREE, it starts
+    at once (FREE stops at the next A). A while armed, or during a recording in bars, calls it off.
+    The waveform shows it filling. Done, it is cut at its hits on the 16th grid and comes in as
+    **REC1**-**REC4** (the channel's number) while the beat plays on; the channel plays it at once
+    (on GRID, so it plays as recorded), in place of its last recording. Recordings are kept in
+    `rec/` in the app folder and come back with every set and every start, so a song finds them by
+    name. See [Sampling](#sampling).
+  - **CHOP** (under SAMPLE): how the channel's break is cut. X / Y cut it again, live, while it
+    plays: at its **HITS**, or evenly every **16TH**, **8TH** or **BEAT**. A recording keeps its cut;
+    a break from a set has its own again at the next start. A pre-chopped break (a folder) keeps its
+    files.
   - **SET** (up from BREAK, under the waveform): the set of breaks, a folder in `breaks/` (see
     [sets](#your-own-breaks-sets)). X / Y pick a set, A loads it. The beat plays on while it
     loads and the new set comes in when it is ready.
@@ -439,11 +454,15 @@ on a hub.
   start and stop it yourself (from a linked Brick it still lines up with the leader's bar).
 - **MIDI clock out:** while the sequencer plays and no clock is coming in (AUTO), or always (SEND),
   Columbia Street sends clock (24 a quarter note), START and STOP to every MIDI port. The clock is timed to the sound as
-  it is heard, so a drum machine or synth lands on the beat.
+  it is heard (through the interface playing it, its own latency included), so a drum machine or synth lands on the beat.
 - **MIDI clock in** (AUTO or FOLLOW): the tempo follows it (a straight line through the last four
-  beats of ticks, so USB's jitter averages out: within a tenth of a millisecond at 250 BPM), and its phase is held by trimming the playback speed, as
-  Wi-Fi sync does. START plays from the first step, CONTINUE and song position pick up where they
-  say, STOP stops.
+  beats of ticks, so USB's jitter averages out: within a tenth of a millisecond at 250 BPM; a new
+  tempo is taken in a beat), and its phase is held by trimming the playback speed, as
+  Wi-Fi sync does. START plays from the first step (the first tick after it is the downbeat), CONTINUE and song position pick up where they
+  say, on the tick, STOP stops. A tick lost on the way (a busy hub) is counted all the same.
+- **Both ways:** following a clock on AUTO, Columbia Street passes it on to its other MIDI ports and
+  to the Bricks following it, timed to its own sound as heard (never back to the port it comes
+  from): a chain of gear lines up with what each one plays. `CS_MIDI_RELAY=0` doesn't pass it on.
 - **MIDI notes:** channels 1-4 play breaks 1-4's slices (note 36, C1, is the first slice, each note
   up the next), channel 5 plays the bass at the key's pitch, held while the key is down.
 - **Settings by MIDI CC:** the important channel, mixer, pattern and play settings each have a CC,
@@ -451,7 +470,8 @@ on a hub.
   solo, 85-90 the tempo and bus, 102-113 its HIT, ROLL and ALT cells, 114-116 the scenes and the
   pattern slot. [docs/MIDI.md](docs/MIDI.md) is the full MIDI implementation chart.
 - **Audio:** a USB sound card or DAC takes the output while it is plugged in, and the speaker and
-  headphones take it back when it is unplugged.
+  headphones take it back when it is unplugged. One interface both ways (a MixPre, a bluebox) also
+  gives the sampler its input (see [Audio](#audio)).
 
 Settings in `launch.sh` in the app folder, before `./columbia`: `CS_MIDI=0` turns MIDI off,
 `CS_MIDI_CLOCK=0` never sends clock and `CS_MIDI_FOLLOW=0` never follows it, whatever the MIDI setting. `CS_AUDIO=internal`
@@ -459,10 +479,36 @@ keeps the speaker; `CS_AUDIO=<name>` picks a device by name (`log.txt` lists wha
 
 ## Audio
 
-The sound is made in 512-frame buffers at 48 kHz (about 11 ms, half the Miyoo's delay), with
-memory locked so it never waits for a page to be read back in; the screen runs below it at 30
-frames a second, and the buttons are read every few milliseconds. If you hear crackles, set
-`CS_BUFFER=1024`. `CS_RATE=44100` does a little less work. `CS_ROTATE=180` turns the picture and
+The sound goes through [brickio](https://github.com/sydilaxe/Brickio-dev) (`lib/brickio`), the
+sydilaxe TrimUI apps' shared USB audio, MIDI and clock. A USB interface is opened straight through
+ALSA, not through MustardOS's PipeWire, from one real-time thread on a core of its own: with one
+interface both ways (**DUPLEX**), a period in and a period out, so its input reaches the sampler a
+few milliseconds after it is played. The buffer starts small and grows a step if the interface
+keeps running dry (`CS_BUFFER=256`, say, fixes it); what was chosen for each interface is kept in
+`audio.txt`. With no USB interface, the speaker and headphones play through SDL as before.
+`CS_AUDIO_PATH=sdl` keeps the old path altogether (512-frame buffers, no input). The engine makes
+the same samples either way, with memory locked so it never waits for a page to be read back in;
+the screen runs below it at 30 frames a second, and the buttons are read every few milliseconds.
+`CS_RATE=44100` does a little less work (the interface must run it).
+
+**Latency, and Bricks with different interfaces.** Everything that keeps time (the MIDI clock out,
+the link, the Wi-Fi sync, following a clock, the sampler's input) works from the moment the sound
+is heard, using brickio's figure for the interface open: the buffers, then (DUPLEX) the driver's
+own queues as measured once it has run three seconds (`log.txt`'s `AUDIO latency` line). So a
+Brick on a MixPre and another on a bluebox meet at their outputs, not just at their USB ports.
+`CS_SYNC_LATENCY=<frames>` overrides it, for an interface whose converters add more.
+
+## Sampling
+
+The SAMPLE stop on the CHOP page records into the channel you are on (see [Controls](#controls)).
+For the input, connect the other unit's output to the interface's input and lead it from this Brick
+(MIDI clock, or the USB link for another Brick: Jaffedrone, RadioScan, Conduit, another Columbia
+Street), or follow it. The recording is lined up by the round trip, what this Brick hears and what
+comes back in, so what the other unit plays on the bar is the recording's first sample.
+`CS_REC_OFFSET=<ms>` trims what is left by ear (positive: later in the source). RESAMPLE takes
+Columbia Street's own sound, exactly, with nothing to line up. Recordings are 16-bit mono WAVs in
+`rec/` (`REC1_2BAR.wav`: channel 1, two bars, its tempo exact from its length; `_16THS` and so on
+when cut again), at most 40 seconds. Delete one to forget it; copy one into a set to keep it there. `CS_ROTATE=180` turns the picture and
 `CS_JOYMAP=A=1,B=0,...` renumbers the buttons (also `L2`, `R2`, `L3`, `R3`, `F1`, `F2`), for a firmware that
 differs. `log.txt` lists the controllers found and any button the app doesn't use.
 
@@ -564,10 +610,11 @@ SHA-256) into `third_party/mbedtls/` (not committed) and links in statically.
 | `src/ui.c` | Pages, input, drawing |
 | `src/gfx.c`, `src/font_data.h` | Framebuffer drawing and the font |
 | `src/sync.c` | Wi-Fi sync |
-| `src/aclock.c` | Audio clock: where the music is at the speaker, for Wi-Fi sync |
+| `src/sampler.c` | The sampler: records the input or the output in time, cut and swapped in live |
 | `src/update.c`, `src/net.c` | Self-update: GitHub's latest release, the download and unzip; HTTPS |
-| `src/main_trimui.c` | Device entry point (SDL2: video scaled 1.6x, buttons, sticks, USB audio) |
-| `src/midi.c` | USB MIDI clock in and out (ALSA raw MIDI) |
+| `src/main_trimui.c` | Device entry point (SDL2: video scaled 1.6x, buttons, sticks; audio through brickio, or SDL) |
+| `src/midi.c` | USB MIDI: the notes, CCs and the SONG page's setting, on brickio's reader and clock |
+| `lib/brickio/` | [brickio](https://github.com/sydilaxe/Brickio-dev), the apps' shared USB audio, MIDI, clock (`mclock`, `mclockio`), the Brick link, the audio clock and the log; a copy at `lib/brickio/BRICKIO_VERSION`, updated with its `tools/brickio-sync.sh` |
 | `src/main_test.c` | Host test harness |
 | `src/main_update.c` | Host updater (`build/cs_update`) for tests |
 | `install.sh` | The one-line installer, over SSH |

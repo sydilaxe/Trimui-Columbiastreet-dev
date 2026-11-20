@@ -14,7 +14,11 @@ echo performance > $CPU/cpu0/cpufreq/scaling_governor 2>/dev/null
 export LD_LIBRARY_PATH="/usr/lib:$LD_LIBRARY_PATH"
 
 # Optional settings, before ./columbia (for example CS_BUFFER=1024 ./columbia):
-#   CS_BUFFER=1024     bigger audio buffers if you hear crackle (512 by default)
+#   CS_BUFFER=256      the audio buffer, if you hear crackle (brickio: AUTO, kept for each interface in audio.txt)
+#   CS_AUDIO_PATH=sdl  the old audio path (SDL, 512 frames, no input to sample from)
+#   CS_REC_OFFSET=3    the sampler's input later by 3 ms (or earlier: -3), trimmed by ear
+#   CS_SYNC_LATENCY=N  the output's latency in frames, for an interface whose converters add more
+#   CS_MIDI_RELAY=0    following a clock, don't pass it on to the other MIDI ports
 #   CS_RATE=44100      a lower sample rate: a little less work
 #   CS_UPDATE=0        don't check GitHub for a new version
 #   CS_AUDIO=internal  always the speaker and headphones (default: a USB audio device when one is plugged in)

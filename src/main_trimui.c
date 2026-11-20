@@ -174,6 +174,13 @@ static void bio_latency(void)
              st.duplex ? "measured, DUPLEX" : "the buffers");
 }
 
+static int bio_have_input(void)
+{
+    UaStatus st;
+    ua_status(&st);
+    return st.have_input;
+}
+
 static void bio_opened(int frames, const char *device)
 {
 
@@ -1014,6 +1021,7 @@ int main(int argc, char **argv)
                        .rate = rate};
         ui_lock = lock;
         ui_unlock = unlock;
+        ui_audio_input = bio_have_input;
         ua_start(&ac);
         have_audio = 1;
         perf_log("AUDIO", "path: brickio (lib/brickio %s); CS_AUDIO_PATH=sdl for the old one", CS_BRICKIO);

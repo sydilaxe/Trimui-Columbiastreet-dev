@@ -103,6 +103,10 @@ jobs:
           grep -q "^generator: 199 seeds, 0 identical pairs, 0 out of range" $r
           grep -q "^save/load: 1, same 1, bpm 163.5, bits 7, slot D used 1" $r
           grep -q "^sets: 5 found .*(want 1: 1)" $r
+          grep -q "^sampler resample: armed 1, in 1 .*REC1 135529 frames (want 135529), 32 steps, 170.00 BPM, on the bar line 1 .*BRK1 plays it 1" $r
+          grep -q "^sampler input, 1234 frames late: armed 1, in 1 .*REC1 135529 frames (want 135529), 32 steps, 170.00 BPM, on the bar line 1 .*BRK1 plays it 1" $r
+          grep -q "^sampler kept: .*(want 1: 1)" $r
+          grep -q "^sampler buttons: .*(want 1: 1)" $r
           grep -q "^song sets: .*(want 1: 1)" $r
           grep -q "^save errors: .*(want 1: 1)" $r
           grep -q "^bass voices: 24, 0 silent (want 0)" $r
