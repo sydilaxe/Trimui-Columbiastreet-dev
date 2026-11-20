@@ -84,6 +84,17 @@ static const ClockHost host = {h_bpm, h_set_bpm, h_position, h_set_position, h_s
 static void lk(void) { ui_lock(); }
 static void ul(void) { ui_unlock(); }
 
+/* brickio's Wi-Fi sync (HI5S) talks to the same engine from the main thread,
+ * taking the audio lock for each change (and for the position, two variables) */
+static int w_mode(void) { return song.sync_mode; }
+static void w_set_bpm(float b) { lk(), song.bpm = b, ul(); }
+static double w_position(void) { lk(); double p = engine_position(); ul(); return p; }
+static void w_set_position(double s) { lk(), engine_set_position(s), ul(); }
+static void w_set_rate(double r) { lk(), engine_set_rate(r), ul(); }
+static void w_set_playing(int on) { lk(), engine_set_playing(on), ul(); }
+static const SyncClock wifi = {w_mode, h_bpm, w_set_bpm, w_position, w_set_position, w_set_rate, h_playing, w_set_playing};
+const SyncClock *wifi_clock(void) { return &wifi; }
+
 static int inited;
 static void init_clock(int io)
 {

@@ -1365,8 +1365,8 @@ static void draw_header(void)
     }
     if (song.sync_mode != SYNC_OFF) {
         const SyncStatus *ss = sync_status();
-        int linked = ss->leading || ss->have_leader;
-        badge(&bx, ss->leading ? "LEAD" : ss->have_leader ? "FLW" : "SYNC", linked ? 0x46b4ff : C_PANEL2,
+        int linked = ss->leading || ss->following;
+        badge(&bx, ss->leading ? "LEAD" : ss->following ? "FLW" : "SYNC", linked ? 0x46b4ff : C_PANEL2,
               linked ? 0x000000 : C_DIM);
     }
     if (live.playing)
@@ -1789,7 +1789,7 @@ static void draw_song(void)
             const SyncStatus *ss = sync_status();
             if (song.sync_mode == SYNC_OFF)
                 snprintf(val, sizeof val, "OFF");
-            else if (ss->have_leader)
+            else if (ss->following)
                 snprintf(val, sizeof val, "%s  FOLLOWING %+.0fMS", sync_mode_names[song.sync_mode], ss->offset_ms);
             else if (ss->leading && ss->peers)
                 snprintf(val, sizeof val, "%s  LEADING %d", sync_mode_names[song.sync_mode], ss->peers);

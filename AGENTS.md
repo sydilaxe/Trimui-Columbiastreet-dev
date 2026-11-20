@@ -33,8 +33,9 @@ wired by `mclockio` (`mclock` follows, leads and passes on the clock over MIDI a
 real-time clock thread); the clock, the link and the sampler's input are all timed to the heard sound
 from brickio's latency for the open interface (`bio_latency`). `make test` checks the link's descriptors,
 the leader's search against a stand-in sysfs, and how tightly a follower holds the leader's position, and
-brickio's own tests check the rest (`make test` there). The engine, the pages and Wi-Fi sync are shared
-with the Miyoo version; keep the engine the same sound as there (with the sticks at rest,
+brickio's own tests check the rest (`make test` there). Wi-Fi sync is brickio's `sync` (HI5S, the same packets
+as the Miyoo version's and the other apps'), on the engine through `wifi_clock()` in `src/midi.c`. The engine
+and the pages are shared with the Miyoo version; keep the engine the same sound as there (with the sticks at rest,
 `build/test/session.wav` matches the Miyoo harness's sample for sample).
 
 The sampler (`src/sampler.c`, the CHOP page's SAMPLE stop, and its CHOP stop to cut a break again live) is

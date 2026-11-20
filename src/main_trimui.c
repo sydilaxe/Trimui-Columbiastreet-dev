@@ -1054,7 +1054,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "leds: %s\n", leds_start() ? "F1/F2 show the mute scenes, the top bar the beat, lr the level"
                                                 : "not driven (no led_anim, or CS_LEDS=0)");
 #endif
-    sync_init();
+    sync_init(wifi_clock()); /* brickio's Wi-Fi sync, on the engine */
     /* the clock out leaves as the sound is heard, the device's buffer behind the engine (brickio's
      * path: its own figure, bio_latency) */
     midi_set_latency((float)bufsz / rate);

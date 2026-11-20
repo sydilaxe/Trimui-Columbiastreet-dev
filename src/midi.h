@@ -27,6 +27,10 @@
 #pragma once
 #include <stdint.h>
 
+#include "sync.h"
+/* the engine, for brickio's Wi-Fi sync (sync_init, sync_core_init) */
+const SyncClock *wifi_clock(void);
+
 /* brickio's reader (real time), the Brick link's follower on the bottom port
  * (CS_LINK=0 leaves it alone), and the clock's own thread (every millisecond,
  * real time, mclockio). Following a clock on AUTO, the clock goes on to the

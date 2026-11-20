@@ -62,8 +62,9 @@ static const Ev script[] = {
     SHOT(11400, "pattern_edit"),
     /* CHOP page: BRK2, bits down to 6, compressor up, filter */
     PRESS(12000, BTN_R1), PRESS(12100, BTN_RIGHT),
-    /* up through the SET stop (above the params) and round -> BITS */
-    PRESS(12150, BTN_UP), PRESS(12200, BTN_UP), PRESS(12300, BTN_UP), PRESS(12400, BTN_UP),
+    /* up through the SET, CHOP and SAMPLE stops (above the params) and round -> BITS */
+    PRESS(12150, BTN_UP), PRESS(12200, BTN_UP), PRESS(12250, BTN_UP), PRESS(12300, BTN_UP), PRESS(12350, BTN_UP),
+    PRESS(12400, BTN_UP),
     {12500, BTN_Y, 1, NULL}, {13600, BTN_Y, 0, NULL},
     PRESS(13700, BTN_DOWN), PRESS(13800, BTN_DOWN), /* -> COMP */
     {13900, BTN_X, 1, NULL}, {15200, BTN_X, 0, NULL},
@@ -225,7 +226,7 @@ static void sim_sync(int echo, double *mean_ms, double *worst_ms, float *delay)
     engine_init(RATE);
     song.bpm = 97.f;
     song.sync_mode = SYNC_FOLLOW;
-    sync_core_init(100);
+    sync_core_init(wifi_clock(), 100);
     aclock_init(RATE, 0);
     static int16_t pcm[2 * 1024];
     SimPkt q[64];
@@ -303,7 +304,7 @@ static void sim_sync(int echo, double *mean_ms, double *worst_ms, float *delay)
     *worst_ms = worst;
     *delay = sync_status()->delay_ms;
     engine_set_rate(1.0);
-    sync_core_init(1);
+    sync_core_init(wifi_clock(), 1);
 }
 
 int main(int argc, char **argv)
@@ -334,7 +335,7 @@ int main(int argc, char **argv)
     /* ---- the scripted session */
     song_default();
     ui_init();
-    sync_core_init(1);
+    sync_core_init(wifi_clock(), 1);
     int frames = TOTAL_MS * RATE / 1000;
     int16_t *pcm = malloc(frames * 4);
     int ev = 0, block = RATE / 100; /* 10 ms */
@@ -894,18 +895,18 @@ int main(int argc, char **argv)
     {
         song_default();
         song.sync_mode = SYNC_AUTO;
-        sync_core_init(100);
+        sync_core_init(wifi_clock(), 100);
         uint8_t pkt[SYNC_PKT_LEN];
         float save_bpm = song.bpm;
         song.bpm = 140.f;
         song.sync_mode = SYNC_LEAD;
-        sync_core_init(5);
+        sync_core_init(wifi_clock(), 5);
         sync_make_packet(pkt, 1000);
         song.bpm = save_bpm;
         song.sync_mode = SYNC_AUTO;
-        sync_core_init(100);
+        sync_core_init(wifi_clock(), 100);
         sync_handle_packet(pkt, sizeof pkt, 2000);
-        printf("sync: bpm=%.1f following=%d\n", song.bpm, sync_status()->have_leader);
+        printf("sync: bpm=%.1f following=%d\n", song.bpm, sync_status()->following);
     }
 
     /* ---- sync timing over a slow, uneven network */

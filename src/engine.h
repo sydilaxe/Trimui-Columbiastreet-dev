@@ -49,7 +49,8 @@ enum {
 enum { WAVE_SUB, WAVE_REESE, WAVE_808, WAVE_GROWL, NWAVE_SYNTH }; /* then the bass/ samples */
 enum { BALT_OCTUP, BALT_FIFTH, BALT_OCTDN, BALT_SLIDE, BALT_REST, NBALT };
 
-enum { SYNC_OFF, SYNC_AUTO, SYNC_LEAD, SYNC_FOLLOW, NSYNCMODE };
+#include "sync.h" /* brickio's Wi-Fi sync (HI5S): SYNC_OFF, SYNC_AUTO, SYNC_LEAD, SYNC_FOLLOW */
+#define NSYNCMODE 4
 /* the output, as on HI5: stereo, or the sound in mono on one side and clock
  * pulses on the other (clk_side 0 = clock on the right), clk_ppqn pulses per
  * quarter note (an index into 1, 2, 4, 8, 16, 24, 32), clk_width ms wide.

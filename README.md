@@ -609,7 +609,6 @@ SHA-256) into `third_party/mbedtls/` (not committed) and links in statically.
 | `src/breaks.c` | WAV loading, sets of breaks and switching them, onset slicing, bass pitch detection |
 | `src/ui.c` | Pages, input, drawing |
 | `src/gfx.c`, `src/font_data.h` | Framebuffer drawing and the font |
-| `src/sync.c` | Wi-Fi sync |
 | `src/sampler.c` | The sampler: records the input or the output in time, cut and swapped in live |
 | `src/update.c`, `src/net.c` | Self-update: GitHub's latest release, the download and unzip; HTTPS |
 | `src/main_trimui.c` | Device entry point (SDL2: video scaled 1.6x, buttons, sticks; audio through brickio, or SDL) |
