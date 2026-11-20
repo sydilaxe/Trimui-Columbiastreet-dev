@@ -233,6 +233,9 @@ void song_clamp(void); /* after the banks change, keep params in range */
 /* another set of breaks swapped into banks[] (audio locked): the hits playing
  * from the old samples stop, and the params come into range */
 void engine_banks_changed(void);
+/* banks[i] replaced or cut again (the sampler; audio locked): the hits playing
+ * from its old samples stop, and the params come into range */
+void engine_bank_replaced(int i);
 int song_save(const char *path);
 int song_load(const char *path);
 

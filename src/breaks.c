@@ -276,27 +276,20 @@ static float guess_bpm(float secs)
  * last 24 ms by more than e^1 starts a slice. Each start is moved back to
  * just before the attack, and with a known tempo snapped to the 16th grid
  * when it lies close to it. Takes ownership of data. */
-int bank_from_loop(Bank *b, const char *name, float *data, int len, float bpm)
+/* the slices at the loop's hits: onsets in its energy, each moved back to
+ * where its attack begins, put on the 16th grid when the tempo is known */
+static void slice_hits(Bank *b, float bpm)
 {
-    memset(b, 0, sizeof *b);
-    snprintf(b->name, sizeof b->name, "%s", name);
-    b->data = data;
-    b->len = len;
-    float secs = len / sr;
-    b->bpm = bpm > 0.f ? bpm : guess_bpm(secs);
+    int len = b->len;
     float g = sr * 15.f / b->bpm; /* samples per 16th */
-    b->steps = (int)(len / g + 0.5f);
-    if (b->steps < 1)
-        b->steps = 1;
-
     int hop = (int)(0.004f * sr), nh = len / hop;
     float *e = malloc((nh + 1) * sizeof(float));
     float emax = 1e-9f, prev = 0.f;
     for (int h = 0; h < nh; h++) {
         float s = 1e-7f;
         for (int i = h * hop; i < (h + 1) * hop; i++) {
-            float d = data[i] - prev;
-            prev = data[i];
+            float d = b->data[i] - prev;
+            prev = b->data[i];
             s += d * d;
         }
         e[h] = s;
@@ -321,9 +314,9 @@ int bank_from_loop(Bank *b, const char *name, float *data, int len, float bpm)
         int a = h * hop;
         float pk = 0.f;
         for (int i = a; i < a + hop; i++)
-            pk = fmaxf(pk, fabsf(data[i]));
+            pk = fmaxf(pk, fabsf(b->data[i]));
         int s = a;
-        while (s < a + hop && fabsf(data[s]) < pk * 0.2f)
+        while (s < a + hop && fabsf(b->data[s]) < pk * 0.2f)
             s++;
         s -= (int)(0.001f * sr);
         float at = s / g;
@@ -337,7 +330,53 @@ int bank_from_loop(Bank *b, const char *name, float *data, int len, float bpm)
         b->nslices++;
     }
     free(e);
+}
+
+int bank_from_loop(Bank *b, const char *name, float *data, int len, float bpm)
+{
+    memset(b, 0, sizeof *b);
+    snprintf(b->name, sizeof b->name, "%s", name);
+    b->data = data;
+    b->len = len;
+    float secs = len / sr;
+    b->bpm = bpm > 0.f ? bpm : guess_bpm(secs);
+    float g = sr * 15.f / b->bpm; /* samples per 16th */
+    b->steps = (int)(len / g + 0.5f);
+    if (b->steps < 1)
+        b->steps = 1;
+
+    b->timed = bpm > 0.f;
+    slice_hits(b, bpm);
     finish_bank(b);
+    return 1;
+}
+
+static const char *const chop_names[NCHOP] = {"HITS", "16THS", "8THS", "BEATS"};
+const char *chop_name(int style) { return style == CHOP_CUT ? "CUT" : style >= 0 && style < NCHOP ? chop_names[style] : "?"; }
+
+int bank_chop(Bank *b, int style)
+{
+    if (b->chop == CHOP_CUT || style < 0 || style >= NCHOP || !b->data || b->len < 2)
+        return 0;
+    if (style == CHOP_HITS)
+        slice_hits(b, b->timed ? b->bpm : 0.f);
+    else {
+        /* evenly, every 16th, 8th or beat (fewer when that would be over MAX_SLICES) */
+        int every = style == CHOP_16 ? 1 : style == CHOP_8 ? 2 : 4;
+        while ((b->steps + every - 1) / every > MAX_SLICES)
+            every *= 2;
+        double g = (double)b->len / b->steps; /* samples per 16th, as the loop is */
+        b->nslices = 0;
+        for (int st = 0; st < b->steps && b->nslices < MAX_SLICES; st += every) {
+            b->start[b->nslices] = (int)(st * g + 0.5);
+            b->at[b->nslices] = (float)st;
+            b->nslices++;
+        }
+    }
+    b->start[b->nslices] = b->len;
+    for (int i = 0; i < b->nslices; i++)
+        b->tag[i] = (uint8_t)band_tag(b->data + b->start[i], b->start[i + 1] - b->start[i]);
+    b->chop = (uint8_t)style;
     return 1;
 }
 
@@ -394,6 +433,7 @@ static int bank_from_folder(Bank *b, const char *dir, const char *name)
         return 0;
     memset(b, 0, sizeof *b);
     label_from_name(name, b->name);
+    b->chop = CHOP_CUT;
     b->data = malloc(total * sizeof(float));
     b->len = total;
     int pos = 0;
@@ -472,6 +512,63 @@ static int load_set_dir(const char *dir, Bank *out, int *n)
 }
 
 int breaks_load_dir(const char *dir) { return load_set_dir(dir, banks, &nbanks); }
+
+/* ------------------------------------------------------------ recordings */
+
+static char rec_dir[512];
+void breaks_set_rec_dir(const char *dir) { snprintf(rec_dir, sizeof rec_dir, "%s", dir ? dir : ""); }
+
+int breaks_rec_file(char *out, int n, const char *dir, int k, int bars, int chop)
+{
+    char tail[16] = "";
+    if (chop > CHOP_HITS && chop < NCHOP)
+        snprintf(tail, sizeof tail, "_%s", chop_name(chop));
+    if (bars > 0)
+        return snprintf(out, (size_t)n, "%s/REC%d_%dBAR%s.wav", dir, k, bars, tail);
+    return snprintf(out, (size_t)n, "%s/REC%d%s.wav", dir, k, tail);
+}
+
+/* rec/'s recordings after a set's banks (RECn_<bars>BAR[_<chop>].wav, or free) */
+static int load_rec_dir(Bank *out, int *n)
+{
+    if (!rec_dir[0])
+        return 0;
+    char *names[MAX_BANKS];
+    int nn = list_dir(rec_dir, names, MAX_BANKS, 0), added = 0;
+    for (int i = 0; i < nn; i++) {
+        int k = 0, bars = 0, chop = CHOP_HITS;
+        const char *nm = names[i];
+        if (sscanf(nm, "REC%d", &k) == 1 && k >= 1 && k <= NREC && *n < MAX_BANKS) {
+            const char *u = strchr(nm, '_');
+            if (u)
+                sscanf(u + 1, "%dBAR", &bars);
+            for (int c = CHOP_16; c < NCHOP; c++) {
+                char t[16];
+                snprintf(t, sizeof t, "_%s.", chop_name(c));
+                if (strstr(nm, t))
+                    chop = c;
+            }
+            char path[1100];
+            snprintf(path, sizeof path, "%s/%s", rec_dir, nm);
+            int len = 0;
+            float *d = load_wav(path, &len, REC_MAX_SECS);
+            if (d) {
+                char label[8];
+                snprintf(label, sizeof label, "REC%d", k);
+                /* recorded in time: exactly bars x 16 16ths long, so the tempo is in the length */
+                float bpm = bars > 0 ? bars * 16 * 15.f * sr / len : 0.f;
+                Bank *b = &out[(*n)++];
+                bank_from_loop(b, label, d, len, bpm);
+                if (chop != CHOP_HITS)
+                    bank_chop(b, chop);
+                added++;
+                fprintf(stderr, "breaks: %s -> %s, %d slices (%s), %.2f BPM\n", nm, label, b->nslices, chop_name(b->chop), b->bpm);
+            }
+        }
+        free(names[i]);
+    }
+    return added;
+}
 
 /* ----------------------------------------------------------------- sets */
 
@@ -621,7 +718,9 @@ int breaks_load_set(int i)
     set_dir(i, dir, sizeof dir);
     fprintf(stderr, "breaks: set %s\n", set_names[i]);
     set_cur = i;
-    return load_set_dir(dir, banks, &nbanks);
+    int n = load_set_dir(dir, banks, &nbanks);
+    load_rec_dir(banks, &nbanks);
+    return n;
 }
 
 int breaks_load_chosen(void)
@@ -657,7 +756,8 @@ static void *switch_main(void *arg)
     char dir[1100];
     set_dir(next_set, dir, sizeof dir);
     nnext = 0;
-    load_set_dir(dir, next, &nnext);
+    if (load_set_dir(dir, next, &nnext))
+        load_rec_dir(next, &nnext);
     __sync_synchronize();
     sw_state = SWITCH_READY;
     return NULL;

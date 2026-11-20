@@ -15,9 +15,16 @@
 #define MAX_BASS 32
 #define NPEAK 256
 #define MAX_SETS 64
+#define NREC 4             /* recordings REC1..REC4, one for each break channel */
+#define REC_MAX_SECS 40.f  /* the longest: 8 bars at 48 BPM */
 #define SET_NAME 40
 #define CURATED_SET "DIRT"  /* the curated breaks, fetched by tools/fetch_samples.sh */
 #define LOOSE_SET "BREAKS"  /* the .wav files straight in breaks/ */
+
+/* how a bank is cut: at its hits (onsets, on the 16th grid when its tempo is
+ * known), evenly every 16th, 8th or beat; or pre-chopped (a folder: its files) */
+enum { CHOP_HITS, CHOP_16, CHOP_8, CHOP_4, NCHOP, CHOP_CUT = 255 };
+const char *chop_name(int style);
 
 /* what a slice starts with, guessed from its spectrum (for the generator) */
 enum { TAG_KICK = 1, TAG_SNARE = 2, TAG_HAT = 4 };
@@ -33,6 +40,8 @@ typedef struct {
     float at[MAX_SLICES];      /* each slice's position in 16ths */
     uint8_t tag[MAX_SLICES];
     float peak[NPEAK];         /* overview for the waveform display */
+    uint8_t chop;              /* CHOP_* */
+    uint8_t timed;             /* the tempo is known (its name, or recorded in time) */
 } Bank;
 
 typedef struct {
@@ -84,5 +93,16 @@ int bank_slice_end(const Bank *b, int i);      /* GRID end of slice i */
 int bank_find_tag(const Bank *b, int tag, int nth); /* nth slice with the tag, or -1 */
 int bank_count_tag(const Bank *b, int tag);
 
-/* exposed for the test harness */
+/* a loop into a bank (its data taken, brought to the same peak as the rest,
+ * cut at its hits); exposed for the sampler and the test harness */
 int bank_from_loop(Bank *b, const char *name, float *data, int len, float bpm);
+/* cut a loop again (CHOP_*), from its data, which is left as it is: the slices,
+ * their places and tags. 0 for a pre-chopped bank (or no such style) */
+int bank_chop(Bank *b, int style);
+
+/* recordings (the sampler's, rec/ in the app folder): loaded after the set
+ * at start-up and with every set switched in, so a song finds them by name.
+ * RECn_<bars>BAR[_<chop>].wav: recorded in time, its tempo exact from its
+ * length; RECn.wav: free */
+void breaks_set_rec_dir(const char *dir);
+int breaks_rec_file(char *out, int n, const char *dir, int k, int bars, int chop); /* the name for one */

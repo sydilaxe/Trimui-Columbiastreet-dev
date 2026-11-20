@@ -1,7 +1,10 @@
-/* MIDI over USB, from Jaffedrone: class-compliant drum machines, sequencers
- * and interfaces on the TrimUI's USB host port (the Brick's top USB-C), read
- * and written through ALSA's raw MIDI ports (/dev/snd/midiC*D*), so nothing
- * more is needed on the device. Ports are found as they are plugged in.
+/* MIDI over USB on brickio (lib/brickio): class-compliant drum machines,
+ * sequencers and interfaces on the TrimUI's USB host port (the Brick's top
+ * USB-C), read and written through ALSA's raw MIDI ports (/dev/snd/midiC*D*)
+ * by brickio's reader, so nothing more is needed on the device. Ports are
+ * found as they are plugged in. The clock, in and out and over the Brick link,
+ * is brickio's musical clock (mclock, wired by mclockio: song position too);
+ * the notes and CCs are parsed here.
  *
  * In (any channel):
  *   clock          the tempo follows it, and its phase is held by trimming
@@ -13,8 +16,9 @@
  *                  key's pitch, held while the key is
  *   CC             the important settings (ui_midi_cc; see docs/MIDI.md)
  * Out, to every port: clock (24 a quarter note), START and STOP, while the
- * sequencer plays and no clock is coming in. The clock goes out as the sound
- * is heard, the audio buffer's time behind the engine.
+ * sequencer plays: leading, or following on AUTO (passed on, to every port but
+ * the one it comes in on). The clock goes out as the sound is heard: the audio
+ * clock (aclock), which knows the output's real latency.
  *
  * Which way the clock goes is the SONG page's MIDI setting (song.midi_mode:
  * AUTO as above, SEND always, FOLLOW only, OFF neither). In launch.sh:
@@ -23,8 +27,13 @@
 #pragma once
 #include <stdint.h>
 
-void midi_start(int core);   /* the thread (pinned to core, -1: anywhere) */
-void midi_stop(void);
+/* brickio's reader (real time), the Brick link's follower on the bottom port
+ * (CS_LINK=0 leaves it alone), and the clock's own thread (every millisecond,
+ * real time, mclockio). Following a clock on AUTO, the clock goes on to the
+ * other ports from this Brick's heard sound (CS_MIDI_RELAY=0: not) */
+void midi_io_start(void);
+void midi_io_stop(void);
+void midi_tick(void); /* main thread, each frame: the SONG page's setting, ports coming and going */
 void midi_set_latency(float seconds); /* from the engine's position to the sound heard */
 /* messages for the screen ("MIDI: <device>"), main thread */
 int midi_take_notice(char *buf, int n);
