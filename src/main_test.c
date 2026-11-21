@@ -178,6 +178,20 @@ static double corr(const float *a, const float *b, int n)
 
 /* render n frames to a mono float buffer (left channel) */
 static void nopf(void) {}
+
+/* set i in through the SET stop's machinery (a thread, then the commit in ui_tick), the music stopped */
+static int switch_set_wait(int i)
+{
+    static int16_t pcm[2 * 480];
+    if (!breaks_switch_start(i))
+        return 0;
+    for (int t = 0; t < 3000 && breaks_switch_state() != SWITCH_IDLE; t++) {
+        engine_render(pcm, 480);
+        ui_tick(10);
+        usleep(1000);
+    }
+    return breaks_set_current() == i;
+}
 static UpdateStatus fake_update; /* the update prompt, as if v9.9.9 were out */
 static void fake_install(void)
 {
@@ -2400,6 +2414,9 @@ int main(int argc, char **argv)
             closedir(dd);
         sampler_init(RATE, rec);
         sampler_sync_mode(1);
+        /* on DIRT, the curated set, which takes no more breaks: recordings go to the channel's RECn */
+        int on_dirt = switch_set_wait(breaks_find_set("DIRT")) && !breaks_set_takes_more();
+        printf("sampler on DIRT: %d\n", on_dirt);
         song_default();
         song.bpm = 170.f;
         engine_set_playing(1);
@@ -2515,6 +2532,130 @@ int main(int argc, char **argv)
         write_ppm(p, rfb);
         printf("sampler buttons: no input said 1, refused %d; resample armed %d, called off %d; CHOP X cuts at 16ths %d (want 1: %d)\n",
                refused, armed, off, cut16, refused && armed && off && cut16);
+        /* the meter: the source's level before anything is recorded (a Bluebox plugged in: is
+         * there sound?), from either side, falling back when it goes quiet */
+        {
+            static float tone[2 * BLK];
+            for (int i = 0; i < BLK; i++)
+                tone[2 * i] = 0.f, tone[2 * i + 1] = 0.6f * sinf(i * 0.05f); /* the right side only */
+            sampler_monitor(SRC_IN);
+            sampler_level();
+            for (int k = 0; k < 30; k++) /* quiet first: whatever was left falls away */
+                sampler_level();
+            float quiet = sampler_level();
+            double q0 = engine_position(), qspf = engine_steps_per_frame();
+            engine_render(s16, BLK);
+            sampler_audio(tone, NULL, -1.0, s16, BLK, q0, qspf);
+            float heard = sampler_level();
+            static float silence[2 * BLK];
+            for (int k = 0; k < 60; k++) {
+                q0 = engine_position(), qspf = engine_steps_per_frame();
+                engine_render(s16, BLK);
+                sampler_audio(silence, NULL, -1.0, s16, BLK, q0, qspf);
+                sampler_level();
+            }
+            float after = sampler_level();
+            int idle = sampler_state() == REC_IDLE;
+            printf("sampler meter: quiet %.3f, the input's right side %.3f, quiet again %.3f, nothing recorded %d (want 1: %d)\n",
+                   quiet, heard, after, idle, quiet < 0.05f && heard > 0.55f && after < 0.05f && idle);
+            sampler_monitor(SRC_OUT);
+        }
+        /* a full set: 32 breaks of its own, and a recording still goes in (room kept for REC1-REC4) */
+        {
+            int had = nbanks;
+            while (nbanks < MAX_SET_BANKS) {
+                Bank *b = &banks[nbanks];
+                *b = banks[0];
+                b->data = malloc((size_t)b->len * sizeof(float));
+                memcpy(b->data, banks[0].data, (size_t)b->len * sizeof(float));
+                snprintf(b->name, sizeof b->name, "F%02d", nbanks % 100);
+                nbanks++;
+            }
+            int full = nbanks == MAX_SET_BANKS;
+            ui_set_chop_channel(1);
+            ui_set_chop_row(-3);
+            engine_set_playing(0);
+            int ok = sampler_arm(1, 1, SRC_OUT) && sampler_state() == REC_RECORDING;
+            char msg[64] = "";
+            int in = 0;
+            for (int k = 0; k < 400 && !in; k++) {
+                double f0 = engine_position(), fspf = engine_steps_per_frame();
+                engine_render(s16, BLK);
+                sampler_audio(NULL, NULL, -1.0, s16, BLK, f0, fspf);
+                in = sampler_poll(nopf, nopf, msg, sizeof msg);
+            }
+            int bi = song.pat.param[1][B_BANK];
+            int went = in && bi >= MAX_SET_BANKS && !strcmp(banks[bi].name, "REC2");
+            printf("sampler, a full set: %d breaks (had %d), REC2 in %d (%s) at %d (want 1: %d)\n", MAX_SET_BANKS, had, went, msg, bi,
+                   full && ok && went);
+        }
+        /* + NEW SET on the SET stop: an empty set made and loaded (a silent stand-in, the recordings);
+         * two recordings go into it as breaks of its own, S01 in place of the stand-in, S02 after,
+         * kept in its folder; away and back, they load as its breaks, in time */
+        {
+            engine_set_playing(0);
+            ui_set_page(PAGE_CHOP);
+            ui_set_chop_channel(0);
+            ui_set_chop_row(-1);
+            int n0 = breaks_nsets();
+            ui_set_chop_row(0);
+            ui_button(BTN_UP, 1), ui_button(BTN_UP, 0); /* params -> SET: the pick starts at the set in (DIRT) */
+            int steps = n0 - breaks_set_current();
+            for (int k = 0; k < steps; k++)
+                ui_button(BTN_X, 1), ui_button(BTN_X, 0);
+            static uint32_t nfb[SCREEN_W * SCREEN_H];
+            ui_draw(nfb);
+            char p[1200];
+            snprintf(p, sizeof p, "%s/new_set.ppm", out);
+            write_ppm(p, nfb);
+            ui_button(BTN_A, 1), ui_button(BTN_A, 0);
+            static int16_t pcm[2 * 480];
+            for (int t = 0; t < 3000 && breaks_switch_state() != SWITCH_IDLE; t++) {
+                engine_render(pcm, 480);
+                ui_tick(10);
+                usleep(1000);
+            }
+            int si = breaks_find_set("SAMPLES1");
+            char sroot[1100];
+            snprintf(sroot, sizeof sroot, "%s/sets/breaks/SAMPLES1", out);
+            int made = si >= 0 && breaks_set_current() == si && breaks_nsets() == n0 + 1 && breaks_set_count() == 0 &&
+                       nbanks >= 1 && !strcmp(banks[0].name, EMPTY_BANK) && breaks_set_takes_more();
+            /* two recordings, 1 bar each, the music stopped (from the press) */
+            char m1[64] = "", m2[64] = "";
+            for (int r = 0; r < 2; r++) {
+                sampler_arm(r, 1, SRC_OUT);
+                int in = 0;
+                for (int k = 0; k < 400 && !in; k++) {
+                    double f0 = engine_position(), fspf = engine_steps_per_frame();
+                    engine_render(s16, BLK);
+                    sampler_audio(NULL, NULL, -1.0, s16, BLK, f0, fspf);
+                    in = sampler_poll(nopf, nopf, r ? m2 : m1, 64);
+                }
+            }
+            int b0 = song.pat.param[0][B_BANK], b1 = song.pat.param[1][B_BANK];
+            int went = !strcmp(banks[b0].name, "S01") && b0 == 0 && !strcmp(banks[b1].name, "S02") && breaks_set_count() == 2;
+            char f1[1300], f2[1300];
+            snprintf(f1, sizeof f1, "%s/S01_1BAR.wav", sroot);
+            snprintf(f2, sizeof f2, "%s/S02_1BAR.wav", sroot);
+            int kept = access(f1, F_OK) == 0 && access(f2, F_OK) == 0;
+            /* away to DIRT and back */
+            int back = switch_set_wait(breaks_find_set("DIRT")) && switch_set_wait(breaks_find_set("SAMPLES1"));
+            int a = -1, c = -1;
+            for (int i = 0; i < nbanks; i++)
+                a = !strcmp(banks[i].name, "S01") ? i : a, c = !strcmp(banks[i].name, "S02") ? i : c;
+            int timed = a >= 0 && c >= 0 && fabsf(banks[a].bpm - 170.f) < 0.05f && banks[a].steps == 16 &&
+                        breaks_set_count() == 2 && breaks_find_set(EMPTY_BANK) < 0;
+            for (int i = 0; i < nbanks; i++)
+                timed &= strcmp(banks[i].name, EMPTY_BANK) != 0;
+            ui_set_chop_row(-3); /* the SAMPLE stop, in the new set: where the next goes */
+            ui_draw(nfb);
+            snprintf(p, sizeof p, "%s/sample_into_set.ppm", out);
+            write_ppm(p, nfb);
+            printf("sampler, a new set: made 1 (%s) %d, recorded into it (%s; %s) %d, kept in its folder %d, back as its own "
+                   "breaks in time %d (%.2f BPM, %d steps) (want 1: %d)\n",
+                   breaks_set_name(si), made, m1, m2, went, kept, timed, a >= 0 ? banks[a].bpm : 0.f, a >= 0 ? banks[a].steps : 0,
+                   made && went && kept && back && timed);
+        }
         engine_set_playing(0);
     }
     breaks_free();

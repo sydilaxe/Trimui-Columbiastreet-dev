@@ -46,6 +46,10 @@ void ui_stick_fx(int fx);
 void ui_l2_sticks(int on);
 /* the main program's answer to "is there an input to sample?" (NULL: none) */
 extern int (*ui_audio_input)(void);
+/* the input's interface: its name and which pair of channels the sampler takes, of how many
+ * (1 when stereo); and the next pair (wrapping to 1-2). The main program's; NULL: none */
+extern int (*ui_input_info)(char *name, int n, int *pair, int *npairs);
+extern void (*ui_input_next_pair)(void);
 /* the Brick Pro's L3: the one-touch remix (engine_remix), again calls it
  * off; R2 + L3 lets the kept groove go */
 void ui_l3(void);

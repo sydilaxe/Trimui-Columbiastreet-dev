@@ -54,6 +54,8 @@ static const int rec_lens[] = {0, 1, 2, 4, 8}; /* bars; 0 FREE */
 #define NREC_LEN 5
 static int rec_len = 2, rec_src = SRC_IN;
 int (*ui_audio_input)(void); /* an input to record from (the main program's) */
+int (*ui_input_info)(char *name, int n, int *pair, int *npairs);
+void (*ui_input_next_pair)(void);
 static int song_pending = -1; /* the song waiting for its set to load */
 static int held[BTN_COUNT], hold_ms[BTN_COUNT], rep_ms[BTN_COUNT], rep_n[BTN_COUNT];
 static int b_used; /* B was a modifier this press (PATTERN page) */
@@ -573,25 +575,38 @@ static void pattern_b_released(void)
 
 /* the SET stop: X / Y pick a set of breaks (a folder in breaks/), A loads it
  * while the music plays on; ui_tick swaps it in once it is ready */
+/* the SET stop: X / Y pick a set, or + NEW SET after the last (an empty one to
+ * sample into); A loads it, or makes the new one and loads it */
 static void set_action(int b, int repeats)
 {
     int n = breaks_nsets();
-    if (!n) {
-        if (b == BTN_X || b == BTN_Y || b == BTN_A)
-            say("NO SETS: PUT A FOLDER OF WAVS IN BREAKS/");
-        return;
-    }
-    if (set_pick < 0 || set_pick >= n)
+    if (set_pick < 0 || set_pick > n)
         set_pick = breaks_set_current() >= 0 ? breaks_set_current() : 0;
     if (b == BTN_X || b == BTN_Y) {
-        set_pick = wrap(set_pick + (b == BTN_X ? 1 : -1), n);
+        set_pick = wrap(set_pick + (b == BTN_X ? 1 : -1), n + 1);
         return;
     }
     if (b != BTN_A || repeats)
         return;
-    if (breaks_switch_state() != SWITCH_IDLE)
+    if (breaks_switch_state() != SWITCH_IDLE) {
         say("STILL LOADING SET %.24s", breaks_set_name(breaks_switch_target()));
-    else if (set_pick == breaks_set_current())
+        return;
+    }
+    if (set_pick == n) {
+        char nm[SET_NAME];
+        int i = breaks_new_set(nm, sizeof nm);
+        if (i < 0) {
+            say("COULDN'T MAKE A SET IN BREAKS/");
+            return;
+        }
+        set_pick = i;
+        if (breaks_switch_start(i)) {
+            song_pending = -1;
+            say("NEW SET %.20s: SAMPLE INTO IT", nm);
+        }
+        return;
+    }
+    if (set_pick == breaks_set_current())
         say("SET %.24s IS IN", breaks_set_name(set_pick));
     else if (breaks_switch_start(set_pick)) {
         song_pending = -1;
@@ -624,11 +639,28 @@ static void sample_action(int b, int repeats)
     case BTN_B:
         if (repeats)
             return;
+    {
+        /* INPUT 1-2, INPUT 3-4 ... (a multichannel interface's pairs), RESAMPLE, LINK */
+        char nm[64];
+        int pair = 0, np = 1;
+        int have = ui_input_info && ui_input_info(nm, sizeof nm, &pair, &np);
+        if (rec_src == SRC_IN && have && np > 1 && ui_input_next_pair) {
+            ui_input_next_pair(); /* wraps to 1-2: then on to RESAMPLE */
+            if (pair + 1 < np) {
+                say("SAMPLE %.20s %d-%d", nm, 2 * pair + 3, 2 * pair + 4);
+                return;
+            }
+        }
         rec_src = (rec_src + 1) % NSRC;
-        say(rec_src == SRC_IN    ? "SAMPLE THE INPUT"
-            : rec_src == SRC_OUT ? "RESAMPLE: THE SOUND OF THIS BRICK"
-                                 : "SAMPLE THE LINK: THE LEADING BRICK'S SOUND");
+        sampler_monitor(rec_src);
+        if (rec_src == SRC_IN && have && np > 1)
+            say("SAMPLE %.20s 1-2", nm);
+        else
+            say(rec_src == SRC_IN    ? (have ? "SAMPLE THE INPUT" : "SAMPLE THE INPUT (NONE: PLUG IN A USB INTERFACE)")
+                : rec_src == SRC_OUT ? "RESAMPLE: THE SOUND OF THIS BRICK"
+                                     : "SAMPLE THE LINK: THE LEADING BRICK'S SOUND");
         return;
+    }
     case BTN_A:
         if (repeats)
             return;
@@ -1406,11 +1438,11 @@ static void draw_footer(void)
     };
     const char *hint = hints[page];
     if (page == PAGE_CHOP && chop_p == CHOP_TOP)
-        hint = "X/Y:LENGTH  B:INPUT/RESAMPLE/LINK  A:REC / STOP";
+        hint = "X/Y:LENGTH  B:SOURCE  A:REC / STOP";
     else if (page == PAGE_CHOP && chop_p == CHOP_TOP + 1)
         hint = "X/Y:CUT IT AGAIN, LIVE  A:PLAY SLICE  B:MUTE";
     else if (page == PAGE_CHOP && chop_p < 0)
-        hint = "^v:PARAMS  X/Y:PICK A SET  A:LOAD IT  B:MUTE";
+        hint = "^v:PARAMS  X/Y:PICK A SET (OR + NEW)  A:LOAD IT  B:MUTE";
     if (page == PAGE_SONG && song_cur >= NSLOT)
         hint = song_cur == SG_TEMPO   ? (ts_f == 0 ? "<>:SETTING  X/Y:TEMPO  R2+X:TAP" : "<>:SETTING  X/Y:SYNC MODE")
                : song_cur == SG_OUT   ? "<>:SETTING  X/Y:+/-"
@@ -1593,10 +1625,11 @@ static void draw_chop(void)
         gfx_fill(wx + (int)(ww * live.play_pos[v]), wy, 2, wh, 0xffffff);
     /* a recording into this channel: how far it has got, over the waveform */
     int rst = sampler_state();
+    float lv = sampler_level(); /* once a frame: it falls each time it is read */
     if ((rst == REC_RECORDING || rst == REC_ARMED || rst == REC_CHOPPING) && sampler_channel() == v) {
         int pw = rst == REC_RECORDING ? (int)(ww * sampler_progress()) : rst == REC_CHOPPING ? ww : 0;
         gfx_fill(wx, wy, pw, wh, gfx_mix(C_PANEL, 0xff3030, 0.35f));
-        gfx_fill(wx, wy + wh - 4, (int)(ww * sampler_level()), 4, 0xff3030);
+        gfx_fill(wx, wy + wh - 4, (int)(ww * lv), 4, 0xff3030);
         gfx_text(wx + 8, wy + 4, rst == REC_ARMED ? "ARMED" : rst == REC_RECORDING ? "REC" : "CUTTING", 0xff5050, FONT_SMALL);
     }
     char info[96];
@@ -1610,17 +1643,32 @@ static void draw_chop(void)
         gfx_text(wx + 8, iy, "SAMPLE", C_TEXT, FONT_SMALL);
         BlinkName ln = {""};
         int lk = rec_src == SRC_LINK && midi_link_audio(&ln);
-        snprintf(info, sizeof info, "< %s >  %s%.10s", len,
-                 rec_src == SRC_IN ? "INPUT" : rec_src == SRC_OUT ? "RESAMPLE" : lk ? "LINK: " : "LINK (NONE)", lk ? ln.s : "");
+        char inm[64], src_s[48];
+        int pair = 0, np = 1;
+        if (rec_src == SRC_IN && ui_input_info && ui_input_info(inm, sizeof inm, &pair, &np))
+            np > 1 ? snprintf(src_s, sizeof src_s, "IN: %.12s %d-%d", inm, 2 * pair + 1, 2 * pair + 2)
+                   : snprintf(src_s, sizeof src_s, "IN: %.16s", inm);
+        else if (rec_src == SRC_IN)
+            snprintf(src_s, sizeof src_s, "INPUT (NONE)");
+        else if (rec_src == SRC_OUT)
+            snprintf(src_s, sizeof src_s, "RESAMPLE");
+        else
+            snprintf(src_s, sizeof src_s, lk ? "LINK: %.10s" : "LINK (NONE)", ln.s);
+        snprintf(info, sizeof info, "< %s >  %s", len, src_s);
         gfx_text(wx + 90, iy, info, C_TEXT, FONT_SMALL);
+        /* the source's level, always: is there sound to sample? (red near clipping) */
+        gfx_fill(wx + 2, iy + 18, ww - 4, 3, C_LINE);
+        gfx_fill(wx + 2, iy + 18, (int)((ww - 4) * lv), 3, lv > 0.95f ? 0xff3030 : 0x40d060);
         if (rst == REC_ARMED)
             snprintf(info, sizeof info, "REC%d ARMED: NEXT BAR", sampler_channel() + 1);
         else if (rst == REC_RECORDING)
             snprintf(info, sizeof info, "REC%d %d%%", sampler_channel() + 1, (int)(100.f * sampler_progress()));
         else if (rst == REC_CHOPPING)
             snprintf(info, sizeof info, "REC%d CUTTING...", sampler_channel() + 1);
+        else if (breaks_set_takes_more())
+            snprintf(info, sizeof info, "A: NEW BREAK IN %.10s", breaks_set_name(breaks_set_current()));
         else
-            snprintf(info, sizeof info, "A: REC INTO %s", voice_names[v]);
+            snprintf(info, sizeof info, "A: REC INTO %s (REC%d)", voice_names[v], v + 1);
         text_r(wx + ww - 8, iy, info, rst != REC_IDLE ? 0xff5050 : C_DIM, FONT_SMALL);
     }
     else if (chop_p == CHOP_TOP + 1) {
@@ -1635,19 +1683,20 @@ static void draw_chop(void)
     }
     else if (chop_p < 0) {
         /* the SET stop: the set picked, and whether it is the one in */
-        int n = breaks_nsets(), pk = set_pick >= 0 && set_pick < n ? set_pick : breaks_set_current();
-        int loading = breaks_switch_state() != SWITCH_IDLE, in = pk == breaks_set_current();
+        int n = breaks_nsets(), pk = set_pick >= 0 && set_pick <= n ? set_pick : breaks_set_current();
+        int loading = breaks_switch_state() != SWITCH_IDLE, in = pk >= 0 && pk == breaks_set_current();
+        int fresh = pk == n || pk < 0; /* + NEW SET */
         gfx_fill(wx, iy - 2, ww, 24, C_PANEL2);
         gfx_rect(wx, iy - 2, ww, 24, 2, vcol[v]);
         gfx_text(wx + 8, iy, "SET", C_TEXT, FONT_SMALL);
-        snprintf(info, sizeof info, "< %.24s >", n ? breaks_set_name(pk) : "NONE");
+        snprintf(info, sizeof info, "< %.24s >", fresh ? "+ NEW SET" : breaks_set_name(pk));
         gfx_text(wx + 50, iy, info, in ? C_TEXT : C_ACCENT, FONT_SMALL);
         if (loading)
             snprintf(info, sizeof info, "LOADING %.20s...", breaks_set_name(breaks_switch_target()));
-        else if (n)
-            snprintf(info, sizeof info, in ? "%d/%d  IN" : "%d/%d  A:LOAD", pk + 1, n);
+        else if (fresh)
+            snprintf(info, sizeof info, "A:MAKE ONE TO SAMPLE INTO");
         else
-            snprintf(info, sizeof info, "ADD FOLDERS TO BREAKS/");
+            snprintf(info, sizeof info, in ? "%d/%d  IN" : "%d/%d  A:LOAD", pk + 1, n);
         text_r(wx + ww - 8, iy, info, loading || !in ? C_ACCENT : C_DIM, FONT_SMALL);
     }
     else {

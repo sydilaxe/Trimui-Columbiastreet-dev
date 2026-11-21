@@ -472,22 +472,35 @@ static int bank_from_folder(Bank *b, const char *dir, const char *name)
     return 1;
 }
 
+/* a set made here for sampling into (it has the mark) */
+static int is_sample_set(const char *dir)
+{
+    char p[1100];
+    snprintf(p, sizeof p, "%s/" SET_MARK, dir);
+    return access(p, F_OK) == 0;
+}
+
 /* one set's banks into out[] (from *n on): its .wav files are loops, its
  * folders pre-chopped breaks, files first, then folders, in name order */
 static int load_set_dir(const char *dir, Bank *out, int *n)
 {
-    char *names[MAX_BANKS * 2];
+    char *names[MAX_SET_BANKS * 2];
     int added = 0;
-    int nn = list_dir(dir, names, MAX_BANKS * 2, 0);
+    int nn = list_dir(dir, names, MAX_SET_BANKS * 2, 0);
     for (int i = 0; i < nn; i++) {
         char path[1100], label[8];
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
         int len = 0;
-        float *d = *n < MAX_BANKS ? load_wav(path, &len, 16.f) : NULL;
+        float *d = *n < MAX_SET_BANKS ? load_wav(path, &len, 16.f) : NULL;
         if (d) {
             label_from_name(names[i], label);
             dedupe(label, out[0].name, sizeof(Bank), *n);
-            bank_from_loop(&out[(*n)++], label, d, len, bpm_from_name(names[i]));
+            float bpm = bpm_from_name(names[i]);
+            int nb = 0;
+            const char *u = strchr(names[i], '_');
+            if (!bpm && u && sscanf(u + 1, "%dBAR", &nb) == 1 && nb > 0 && nb <= 64)
+                bpm = nb * 16 * 15.f * sr / len; /* NAME_2BAR.wav: in time, the tempo exact from the length */
+            bank_from_loop(&out[(*n)++], label, d, len, bpm);
             added++;
             fprintf(stderr, "breaks: %s -> %s, %d slices, %.1f BPM, %d steps\n", names[i], label,
                     out[*n - 1].nslices, out[*n - 1].bpm, out[*n - 1].steps);
@@ -496,17 +509,26 @@ static int load_set_dir(const char *dir, Bank *out, int *n)
             fprintf(stderr, "breaks: skipped %s\n", path);
         free(names[i]);
     }
-    nn = list_dir(dir, names, MAX_BANKS * 2, 1);
+    nn = list_dir(dir, names, MAX_SET_BANKS * 2, 1);
     for (int i = 0; i < nn; i++) {
         char path[1100];
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
-        if (*n < MAX_BANKS && bank_from_folder(&out[*n], path, names[i])) {
+        if (*n < MAX_SET_BANKS && bank_from_folder(&out[*n], path, names[i])) {
             dedupe(out[*n].name, out[0].name, sizeof(Bank), *n);
             (*n)++;
             added++;
             fprintf(stderr, "breaks: %s/ -> %s, %d slices\n", names[i], out[*n - 1].name, out[*n - 1].nslices);
         }
         free(names[i]);
+    }
+    if (!added && is_sample_set(dir) && *n < MAX_SET_BANKS) {
+        /* made for sampling into, nothing in it yet: a silent bar to stand in for the first recording */
+        int len = (int)(2.f * sr);
+        float *d = calloc((size_t)len, sizeof(float));
+        if (d) {
+            bank_from_loop(&out[(*n)++], EMPTY_BANK, d, len, 120.f);
+            added++;
+        }
     }
     return added;
 }
@@ -666,6 +688,7 @@ int breaks_scan_sets(const char *root)
                 free(sub[k]);
             }
         }
+        any |= is_sample_set(path); /* made for sampling into: listed while still empty */
         if (any && nsets < MAX_SETS)
             snprintf(set_names[nsets++], SET_NAME, "%s", names[i]);
         free(names[i]);
@@ -721,6 +744,89 @@ int breaks_load_set(int i)
     int n = load_set_dir(dir, banks, &nbanks);
     load_rec_dir(banks, &nbanks);
     return n;
+}
+
+int breaks_new_set(char *name, int n)
+{
+    char path[1100];
+    struct stat st;
+    for (int k = 1; k < 1000; k++) {
+        snprintf(name, (size_t)n, SAMPLE_SET "%d", k);
+        snprintf(path, sizeof path, "%s/%s", set_root, name);
+        if (stat(path, &st) == 0)
+            continue;
+        mkdir(set_root, 0755);
+        if (mkdir(path, 0755) != 0)
+            return -1;
+        snprintf(path, sizeof path, "%s/%s/" SET_MARK, set_root, name);
+        FILE *f = fopen(path, "w");
+        if (!f)
+            return -1;
+        fputs("Columbia Street: a set for sampling into (listed while empty)\n", f);
+        fclose(f);
+        char root[sizeof set_root];
+        snprintf(root, sizeof root, "%s", set_root); /* (scanning sets set_root from its argument) */
+        breaks_scan_sets(root);
+        return breaks_find_set(name);
+    }
+    return -1;
+}
+
+static int is_rec_name(const char *nm) { return !strncmp(nm, "REC", 3) && nm[3] >= '1' && nm[3] <= '0' + NREC && !nm[4]; }
+
+int breaks_set_count(void)
+{
+    int c = 0;
+    for (int i = 0; i < nbanks; i++)
+        c += !is_rec_name(banks[i].name) && strcmp(banks[i].name, EMPTY_BANK);
+    return c;
+}
+
+static int has_empty(void)
+{
+    for (int i = 0; i < nbanks; i++)
+        if (!strcmp(banks[i].name, EMPTY_BANK))
+            return 1;
+    return 0;
+}
+
+int breaks_set_takes_more(void)
+{
+    return set_cur >= 0 && strcmp(set_names[set_cur], CURATED_SET) && breaks_set_count() < MAX_SET_BANKS &&
+           (nbanks < MAX_BANKS || has_empty());
+}
+
+int breaks_set_add_name(char *path, int n, char *label, int bars)
+{
+    if (!breaks_set_takes_more())
+        return 0;
+    char dir[1100];
+    set_dir(set_cur, dir, sizeof dir);
+    for (int k = 1; k < 100; k++) {
+        char lb[8];
+        snprintf(lb, sizeof lb, "S%02d", k);
+        int used = 0;
+        for (int i = 0; i < nbanks && !used; i++)
+            used = !strcmp(banks[i].name, lb);
+        /* nor a file of that name not loaded (one past the 32, say) */
+        char *nm[MAX_SET_BANKS * 2];
+        int nn = used ? 0 : list_dir(dir, nm, MAX_SET_BANKS * 2, 0);
+        for (int i = 0; i < nn; i++) {
+            char l2[8];
+            label_from_name(nm[i], l2);
+            used |= !strcmp(l2, lb);
+            free(nm[i]);
+        }
+        if (used)
+            continue;
+        snprintf(label, 8, "%s", lb);
+        if (bars > 0)
+            snprintf(path, (size_t)n, "%s/%s_%dBAR.wav", dir, lb, bars);
+        else
+            snprintf(path, (size_t)n, "%s/%s.wav", dir, lb);
+        return 1;
+    }
+    return 0;
 }
 
 int breaks_load_chosen(void)

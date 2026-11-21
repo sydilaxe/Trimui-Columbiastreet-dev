@@ -118,7 +118,9 @@ one.
 Breaks come in **sets**, and one set plays at a time. Each folder in the app folder's `breaks/`
 is a set: make a folder, fill it with `.wav` loops (Apache, Think, Funky Drummer...), and it is a
 set you can pick on the CHOP page. The curated breaks are the set `DIRT`. `.wav` files dropped
-straight into `breaks/` make one more set, `BREAKS`.
+straight into `breaks/` make one more set, `BREAKS`. A set made on the SET stop (+ NEW SET) is listed
+while it is still empty (it holds a hidden `.sampleset` file), and the SAMPLE stop fills it. A loop
+named `NAME_2BAR.wav` (no tempo in its name) is taken as exactly two bars, its tempo from its length.
 
 ```
 breaks/
@@ -134,7 +136,8 @@ breaks/
 In a set, a `.wav` file is a loop, sliced at its hits. Put the tempo in its name
 (`APACHE_115bpm.wav`) and the slices land on the 16th grid; without a tempo, it is guessed from
 the length. A folder inside a set is a pre-chopped break, one slice per file in name order. Up to
-32 breaks load from a set. Sets are found when the app starts, so restart it after adding a
+32 breaks load from a set; the four recordings (REC1-REC4) have room of their own beside them,
+however full the set. Sets are found when the app starts, so restart it after adding a
 folder. The set picked last is remembered (in `breakset.txt`).
 
 Switching set keeps each channel on the same BREAK number, now pointing into the new set, so a
@@ -267,23 +270,35 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
   break. Up / down picks a parameter, X / Y change it, A plays the slice, B mutes the channel.
   - **SAMPLE** (the top stop, up from CHOP): records into this channel while the beat plays.
     X / Y pick the length: 1, 2, 4 or 8 bars, or FREE. B picks the source: **INPUT** (a USB
-    interface's input: another Brick, a drum machine, a record), **RESAMPLE** (Columbia Street's
+    interface's input: another Brick, a drum machine, a record; the row names the interface, and on
+    one with more than two inputs, a Bluebox or a MixPre, B steps through its pairs, 1-2, 3-4 and
+    on, before going on: the pair is remembered in `audio.txt`), **RESAMPLE** (Columbia Street's
     own sound) or **LINK** (the sound of the Brick leading this one over the USB link, Jaffedrone say:
     see [Sampling](#sampling); the row names it). A arms it: playing, a recording in bars starts on the next bar line and is exactly
     that long at the tempo, so it plays in time with nothing stretched; stopped, or FREE, it starts
     at once (FREE stops at the next A). A while armed, or during a recording in bars, calls it off.
-    The waveform shows it filling. Done, it is cut at its hits on the 16th grid and comes in as
-    **REC1**-**REC4** (the channel's number) while the beat plays on; the channel plays it at once
-    (on GRID, so it plays as recorded), in place of its last recording. Recordings are kept in
-    `rec/` in the app folder and come back with every set and every start, so a song finds them by
-    name. See [Sampling](#sampling).
+    A meter under the row shows the source's level all the time, so you can see there is sound
+    before recording (red: near clipping). The waveform shows it filling. Done, it is cut at its hits
+    on the 16th grid and comes in while the beat plays on; the channel plays it at once (on GRID, so it
+    plays as recorded). Where it goes, the row says (A: NEW BREAK IN ... or A: REC INTO ...):
+    - In your own sets, and in a new one made on the SET stop, it is **one more break of the set's
+      own**, S01, S02 and on, kept in the set's folder (`S01_2BAR.wav`: two bars, its tempo exact from
+      its length), up to the set's 32 breaks. Sample a whole set of breaks this way.
+    - In DIRT (the curated set, which updates replace), or a set already full, it goes to the
+      channel's scratch slot, **REC1**-**REC4** (the channel's number), in place of its last
+      recording. These are kept in `rec/` in the app folder and come back with every set and every
+      start, so a song finds them by name.
+
+    See [Sampling](#sampling).
   - **CHOP** (under SAMPLE): how the channel's break is cut. X / Y cut it again, live, while it
     plays: at its **HITS**, or evenly every **16TH**, **8TH** or **BEAT**. A recording keeps its cut;
     a break from a set has its own again at the next start. A pre-chopped break (a folder) keeps its
     files.
   - **SET** (up from BREAK, under the waveform): the set of breaks, a folder in `breaks/` (see
     [sets](#your-own-breaks-sets)). X / Y pick a set, A loads it. The beat plays on while it
-    loads and the new set comes in when it is ready.
+    loads and the new set comes in when it is ready. After the last set, **+ NEW SET**: A makes an
+    empty set to sample into (`breaks/SAMPLES1`, `SAMPLES2`...) and loads it. Until the first
+    recording, an empty set plays one silent bar, EMPTY; the first recording takes its place.
   - **BREAK, SLICE**: the bank, and the slice to play.
   - **MODE**: FIX plays SLICE every hit. WALK steps through RANGE slices from SLICE, one per
     hit. RAND picks one of them at random. GRID plays the slice that falls on this step of the
@@ -518,7 +533,8 @@ on the leader's own bar line, to the sample, however long the sound took on the 
 The SAMPLE row shows the leader's name while its sound comes in. `CS_LINK_AUDIO=0` leaves the data channel
 off (the clock link alone, as before). Recordings are 16-bit mono WAVs in
 `rec/` (`REC1_2BAR.wav`: channel 1, two bars, its tempo exact from its length; `_16THS` and so on
-when cut again), at most 40 seconds. Delete one to forget it; copy one into a set to keep it there. `CS_ROTATE=180` turns the picture and
+when cut again), at most 40 seconds. Delete one to forget it; copy one into a set to keep it there. Recordings into a set
+(S01, S02...) are in that set's folder instead, as its own breaks. `CS_ROTATE=180` turns the picture and
 `CS_JOYMAP=A=1,B=0,...` renumbers the buttons (also `L2`, `R2`, `L3`, `R3`, `F1`, `F2`), for a firmware that
 differs. `log.txt` lists the controllers found and any button the app doesn't use.
 

@@ -46,7 +46,11 @@ in as RECn under the audio lock (`engine_bank_replaced`), and keeps it in `rec/`
 data channel beside the clock link (`link_follow_data`, brickio's `blinkauto`, in `src/midi.c`), each block
 with the sender's position, so it starts on the sender's bar line. `make test` records all three sources
 (the input 1234 frames late, the link 2345 frames on the way) and checks they start on the bar line to the
-sample. `rec/` and `audio.txt` are the user's: the updater never writes them (`keep_users`).
+sample. `rec/` and `audio.txt` are the user's: the updater never writes them (`keep_users`). In a set that isn't DIRT
+and has room (its own 32: `MAX_SET_BANKS`; `MAX_BANKS` keeps four more for REC1-REC4), a recording is one more
+break of the set's (S01, S02..., `breaks_set_add_name`), written into its folder as `Snn_<bars>BAR.wav`; the
+SET stop's + NEW SET makes an empty one (`breaks_new_set`: `breaks/SAMPLESn` with a `.sampleset` mark, listed and
+loaded while empty, with a silent EMPTY bank the first recording replaces).
 
 The mute scenes (M1, M2: the mixer's mutes and solos, saved in the song after the v0.3 fields;
 F1 / F2, or R2 + L1 / R1 where there are no function buttons) live in `src/ui.c` and are new on the

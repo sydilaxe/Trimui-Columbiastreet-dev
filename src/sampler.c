@@ -26,6 +26,7 @@ static int sync_mode;
  * CHOPPING, the main thread the rest) */
 static atomic_int state = REC_IDLE, cancel_req, stop_req;
 static int ch, bars, src;
+static atomic_int mon_src; /* the meter's source while idle */
 static double target;   /* the bar line it starts on (audio thread's) */
 static int link_wait;   /* LINK armed: frames waited for the sender's position */
 static int want, got;   /* frames: the length (0: FREE), and recorded so far */
@@ -48,6 +49,7 @@ void sampler_init(int rate, const char *d)
 
 void sampler_set_latency(int frames) { atomic_store(&lat_frames, frames < 0 ? 0 : frames); }
 void sampler_sync_mode(int on) { sync_mode = on; }
+void sampler_monitor(int s) { atomic_store(&mon_src, s); }
 
 /* ------------------------------------------------------------- audio side */
 
@@ -55,6 +57,19 @@ void sampler_audio(const float *in, const float *link, double link_pos, const in
                    double spf)
 {
     int st = atomic_load_explicit(&state, memory_order_acquire);
+    if (st != REC_RECORDING) { /* the meter, before anything is recorded: is there sound to sample? */
+        int ms = st == REC_ARMED ? src : atomic_load_explicit(&mon_src, memory_order_relaxed);
+        float pk = 0.f;
+        for (int k = 0; k < frames; k++) {
+            /* either side: sound on the left alone shows (and records, half as loud) */
+            const float *f = ms == SRC_LINK ? link : ms == SRC_IN ? in : NULL;
+            float l = f ? f[2 * k] : ms == SRC_OUT ? out[2 * k] / 32768.f : 0.f;
+            float r = f ? f[2 * k + 1] : ms == SRC_OUT ? out[2 * k + 1] / 32768.f : 0.f;
+            pk = fmaxf(pk, fmaxf(fabsf(l), fabsf(r)));
+        }
+        if (pk > atomic_load(&level))
+            atomic_store(&level, pk);
+    }
     if (st != REC_ARMED && st != REC_RECORDING)
         return;
     if (atomic_load(&cancel_req)) {
@@ -219,6 +234,8 @@ typedef struct {
     Bank b;
     float *keep; /* a copy to write to the card, after the bank is in */
     int len, k, bars;
+    int to_set;      /* one more break in the set (label, path), not the channel's RECk */
+    char label[8], path[1100], set[SET_NAME];
     atomic_int ready, ok;
 } Job;
 static Job job;
@@ -227,9 +244,7 @@ static atomic_int job_busy;
 static void *cut_main(void *arg)
 {
     (void)arg;
-    char name[8];
-    snprintf(name, sizeof name, "REC%d", job.k);
-    bank_from_loop(&job.b, name, job.b.data, job.len, rec_bpm);
+    bank_from_loop(&job.b, job.label, job.b.data, job.len, rec_bpm);
     /* recorded in time: exactly its bars of 16ths long */
     if (job.bars > 0)
         job.b.steps = job.bars * 16;
@@ -238,6 +253,12 @@ static void *cut_main(void *arg)
         memcpy(job.keep, job.b.data, (size_t)job.len * sizeof(float));
     atomic_store(&job.ok, 1);
     atomic_store_explicit(&job.ready, 1, memory_order_release);
+    if (job.keep && job.to_set) { /* kept in the set's folder, a break of the set's own from now on */
+        if (!write_wav(job.path, job.keep, job.len))
+            fprintf(stderr, "sampler: couldn't keep %s\n", job.path);
+        free(job.keep);
+        job.keep = NULL;
+    }
     if (job.keep) { /* kept in rec/, replacing the last for this channel */
         mkdir(dir, 0755);
         rec_files(job.k, remove_one, NULL);
@@ -282,6 +303,11 @@ int sampler_poll(void (*lock)(void), void (*unlock)(void), char *msg, int n)
         }
         memcpy(job.b.data, buf, (size_t)got * sizeof(float));
         job.len = got, job.k = ch + 1, job.bars = want ? bars : 0;
+        /* one more break in the set when it has room (not DIRT), else the channel's RECk */
+        job.to_set = breaks_set_add_name(job.path, sizeof job.path, job.label, job.bars);
+        if (!job.to_set)
+            snprintf(job.label, sizeof job.label, "REC%d", job.k);
+        snprintf(job.set, sizeof job.set, "%s", breaks_set_name(breaks_set_current()));
         atomic_store(&job.ready, 0), atomic_store(&job.ok, 0);
         atomic_store(&job_busy, 1);
         pthread_t t;
@@ -292,18 +318,18 @@ int sampler_poll(void (*lock)(void), void (*unlock)(void), char *msg, int n)
         if (!atomic_load(&job.ready))
             return 0;
     }
-    /* cut: in under the lock, in place of the last RECk or after the rest */
-    char name[8];
-    snprintf(name, sizeof name, "REC%d", job.k);
+    /* cut: in under the lock: in the set, in place of the empty set's stand-in or after the rest;
+     * RECk in place of the last or after the rest. The set switched meanwhile: kept on the card only */
     float *old = NULL;
+    int moved = job.to_set && strcmp(job.set, breaks_set_name(breaks_set_current()));
     lock();
-    int i = find_bank(name);
+    int i = moved ? -1 : find_bank(job.to_set ? EMPTY_BANK : job.label);
     if (i >= 0) {
         old = banks[i].data;
         banks[i] = job.b;
         engine_bank_replaced(i);
     }
-    else if (nbanks < MAX_BANKS) {
+    else if (!moved && nbanks < MAX_BANKS) {
         i = nbanks;
         banks[nbanks++] = job.b;
     }
@@ -319,12 +345,19 @@ int sampler_poll(void (*lock)(void), void (*unlock)(void), char *msg, int n)
     free(old);
     atomic_store(&job.ready, 0);
     atomic_store(&state, REC_IDLE);
-    if (i < 0)
-        snprintf(msg, (size_t)n, "REC%d: NO ROOM FOR ANOTHER BREAK", job.k);
-    else if (job.bars)
-        snprintf(msg, (size_t)n, "REC%d: %d BAR%s IN, %d SLICES", job.k, job.bars, job.bars > 1 ? "S" : "", banks[i].nslices);
+    char who[32];
+    if (job.to_set)
+        snprintf(who, sizeof who, "%s IN %.12s", job.label, job.set);
     else
-        snprintf(msg, (size_t)n, "REC%d: %.1f S IN, %d SLICES", job.k, (double)job.len / sr, banks[i].nslices);
+        snprintf(who, sizeof who, "%s", job.label);
+    if (moved)
+        snprintf(msg, (size_t)n, "%s: KEPT (THE SET CHANGED)", who);
+    else if (i < 0)
+        snprintf(msg, (size_t)n, "%s: NO ROOM FOR ANOTHER BREAK", who);
+    else if (job.bars)
+        snprintf(msg, (size_t)n, "%s: %d BAR%s, %d SLICES", who, job.bars, job.bars > 1 ? "S" : "", banks[i].nslices);
+    else
+        snprintf(msg, (size_t)n, "%s: %.1f S, %d SLICES", who, (double)job.len / sr, banks[i].nslices);
     return 1;
 }
 

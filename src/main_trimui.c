@@ -187,6 +187,21 @@ static int bio_have_input(void)
     return st.have_input;
 }
 
+/* the input's interface for the SAMPLE stop: "Bluebox" and its pair */
+static int bio_input_info(char *name, int n, int *pair, int *npairs)
+{
+    UaStatus st;
+    ua_status(&st);
+    if (!st.have_input)
+        return 0;
+    /* ALSA's long names ("Bluebox, USB Audio"): up to the comma */
+    snprintf(name, (size_t)n, "%.*s", (int)strcspn(st.in_name, ","), st.in_name);
+    *pair = st.in_pair;
+    *npairs = st.in_ch / 2 > 0 ? st.in_ch / 2 : 1;
+    return 1;
+}
+static void bio_next_pair(void) { ua_cycle_pair(1, 1); }
+
 static void bio_opened(int frames, const char *device)
 {
 
@@ -1028,6 +1043,8 @@ int main(int argc, char **argv)
         ui_lock = lock;
         ui_unlock = unlock;
         ui_audio_input = bio_have_input;
+        ui_input_info = bio_input_info;
+        ui_input_next_pair = bio_next_pair;
         ua_start(&ac);
         have_audio = 1;
         perf_log("AUDIO", "path: brickio (lib/brickio %s); CS_AUDIO_PATH=sdl for the old one", CS_BRICKIO);
