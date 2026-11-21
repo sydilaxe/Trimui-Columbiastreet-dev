@@ -2515,6 +2515,63 @@ int main(int argc, char **argv)
         write_ppm(p, rfb);
         printf("sampler buttons: no input said 1, refused %d; resample armed %d, called off %d; CHOP X cuts at 16ths %d (want 1: %d)\n",
                refused, armed, off, cut16, refused && armed && off && cut16);
+        /* the meter: the source's level before anything is recorded (a Bluebox plugged in: is
+         * there sound?), from either side, falling back when it goes quiet */
+        {
+            static float tone[2 * BLK];
+            for (int i = 0; i < BLK; i++)
+                tone[2 * i] = 0.f, tone[2 * i + 1] = 0.6f * sinf(i * 0.05f); /* the right side only */
+            sampler_monitor(SRC_IN);
+            sampler_level();
+            for (int k = 0; k < 30; k++) /* quiet first: whatever was left falls away */
+                sampler_level();
+            float quiet = sampler_level();
+            double q0 = engine_position(), qspf = engine_steps_per_frame();
+            engine_render(s16, BLK);
+            sampler_audio(tone, NULL, -1.0, s16, BLK, q0, qspf);
+            float heard = sampler_level();
+            static float silence[2 * BLK];
+            for (int k = 0; k < 60; k++) {
+                q0 = engine_position(), qspf = engine_steps_per_frame();
+                engine_render(s16, BLK);
+                sampler_audio(silence, NULL, -1.0, s16, BLK, q0, qspf);
+                sampler_level();
+            }
+            float after = sampler_level();
+            int idle = sampler_state() == REC_IDLE;
+            printf("sampler meter: quiet %.3f, the input's right side %.3f, quiet again %.3f, nothing recorded %d (want 1: %d)\n",
+                   quiet, heard, after, idle, quiet < 0.05f && heard > 0.55f && after < 0.05f && idle);
+            sampler_monitor(SRC_OUT);
+        }
+        /* a full set: 32 breaks of its own, and a recording still goes in (room kept for REC1-REC4) */
+        {
+            int had = nbanks;
+            while (nbanks < MAX_SET_BANKS) {
+                Bank *b = &banks[nbanks];
+                *b = banks[0];
+                b->data = malloc((size_t)b->len * sizeof(float));
+                memcpy(b->data, banks[0].data, (size_t)b->len * sizeof(float));
+                snprintf(b->name, sizeof b->name, "F%02d", nbanks % 100);
+                nbanks++;
+            }
+            int full = nbanks == MAX_SET_BANKS;
+            ui_set_chop_channel(1);
+            ui_set_chop_row(-3);
+            engine_set_playing(0);
+            int ok = sampler_arm(1, 1, SRC_OUT) && sampler_state() == REC_RECORDING;
+            char msg[64] = "";
+            int in = 0;
+            for (int k = 0; k < 400 && !in; k++) {
+                double f0 = engine_position(), fspf = engine_steps_per_frame();
+                engine_render(s16, BLK);
+                sampler_audio(NULL, NULL, -1.0, s16, BLK, f0, fspf);
+                in = sampler_poll(nopf, nopf, msg, sizeof msg);
+            }
+            int bi = song.pat.param[1][B_BANK];
+            int went = in && bi >= MAX_SET_BANKS && !strcmp(banks[bi].name, "REC2");
+            printf("sampler, a full set: %d breaks (had %d), REC2 in %d (%s) at %d (want 1: %d)\n", MAX_SET_BANKS, had, went, msg, bi,
+                   full && ok && went);
+        }
         engine_set_playing(0);
     }
     breaks_free();

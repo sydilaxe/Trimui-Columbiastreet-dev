@@ -134,7 +134,8 @@ breaks/
 In a set, a `.wav` file is a loop, sliced at its hits. Put the tempo in its name
 (`APACHE_115bpm.wav`) and the slices land on the 16th grid; without a tempo, it is guessed from
 the length. A folder inside a set is a pre-chopped break, one slice per file in name order. Up to
-32 breaks load from a set. Sets are found when the app starts, so restart it after adding a
+32 breaks load from a set; the four recordings (REC1-REC4) have room of their own beside them,
+however full the set. Sets are found when the app starts, so restart it after adding a
 folder. The set picked last is remembered (in `breakset.txt`).
 
 Switching set keeps each channel on the same BREAK number, now pointing into the new set, so a
@@ -267,12 +268,15 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
   break. Up / down picks a parameter, X / Y change it, A plays the slice, B mutes the channel.
   - **SAMPLE** (the top stop, up from CHOP): records into this channel while the beat plays.
     X / Y pick the length: 1, 2, 4 or 8 bars, or FREE. B picks the source: **INPUT** (a USB
-    interface's input: another Brick, a drum machine, a record), **RESAMPLE** (Columbia Street's
+    interface's input: another Brick, a drum machine, a record; the row names the interface, and on
+    one with more than two inputs, a Bluebox or a MixPre, B steps through its pairs, 1-2, 3-4 and
+    on, before going on: the pair is remembered in `audio.txt`), **RESAMPLE** (Columbia Street's
     own sound) or **LINK** (the sound of the Brick leading this one over the USB link, Jaffedrone say:
     see [Sampling](#sampling); the row names it). A arms it: playing, a recording in bars starts on the next bar line and is exactly
     that long at the tempo, so it plays in time with nothing stretched; stopped, or FREE, it starts
     at once (FREE stops at the next A). A while armed, or during a recording in bars, calls it off.
-    The waveform shows it filling. Done, it is cut at its hits on the 16th grid and comes in as
+    A meter under the row shows the source's level all the time, so you can see there is sound
+    before recording (red: near clipping). The waveform shows it filling. Done, it is cut at its hits on the 16th grid and comes in as
     **REC1**-**REC4** (the channel's number) while the beat plays on; the channel plays it at once
     (on GRID, so it plays as recorded), in place of its last recording. Recordings are kept in
     `rec/` in the app folder and come back with every set and every start, so a song finds them by

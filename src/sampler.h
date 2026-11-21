@@ -45,7 +45,8 @@ void sampler_press(void);   /* armed: called off; recording FREE: done; in time:
 int sampler_state(void);    /* REC_* */
 int sampler_channel(void);  /* the channel being recorded into */
 float sampler_progress(void); /* 0..1 of the length (FREE: of the buffer) */
-float sampler_level(void);  /* the source's peak lately, 0..1 */
+float sampler_level(void);  /* the source's peak lately, 0..1 (recording or not: a meter to see there is sound) */
+void sampler_monitor(int src); /* the source the meter shows while not recording (SRC_*) */
 /* each frame: a finished recording cut and swapped in (lock / unlock around
  * the swap); 1 with msg set when one went in (or failed) */
 int sampler_poll(void (*lock)(void), void (*unlock)(void), char *msg, int n);

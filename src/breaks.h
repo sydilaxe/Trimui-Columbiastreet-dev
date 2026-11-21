@@ -10,12 +10,13 @@
 #pragma once
 #include <stdint.h>
 
-#define MAX_BANKS 32
 #define MAX_SLICES 64
 #define MAX_BASS 32
 #define NPEAK 256
 #define MAX_SETS 64
 #define NREC 4             /* recordings REC1..REC4, one for each break channel */
+#define MAX_SET_BANKS 32   /* a set's own breaks */
+#define MAX_BANKS (MAX_SET_BANKS + NREC) /* and room kept for the recordings, however full the set */
 #define REC_MAX_SECS 40.f  /* the longest: 8 bars at 48 BPM */
 #define SET_NAME 40
 #define CURATED_SET "DIRT"  /* the curated breaks, fetched by tools/fetch_samples.sh */

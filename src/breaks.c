@@ -476,14 +476,14 @@ static int bank_from_folder(Bank *b, const char *dir, const char *name)
  * folders pre-chopped breaks, files first, then folders, in name order */
 static int load_set_dir(const char *dir, Bank *out, int *n)
 {
-    char *names[MAX_BANKS * 2];
+    char *names[MAX_SET_BANKS * 2];
     int added = 0;
-    int nn = list_dir(dir, names, MAX_BANKS * 2, 0);
+    int nn = list_dir(dir, names, MAX_SET_BANKS * 2, 0);
     for (int i = 0; i < nn; i++) {
         char path[1100], label[8];
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
         int len = 0;
-        float *d = *n < MAX_BANKS ? load_wav(path, &len, 16.f) : NULL;
+        float *d = *n < MAX_SET_BANKS ? load_wav(path, &len, 16.f) : NULL;
         if (d) {
             label_from_name(names[i], label);
             dedupe(label, out[0].name, sizeof(Bank), *n);
@@ -496,11 +496,11 @@ static int load_set_dir(const char *dir, Bank *out, int *n)
             fprintf(stderr, "breaks: skipped %s\n", path);
         free(names[i]);
     }
-    nn = list_dir(dir, names, MAX_BANKS * 2, 1);
+    nn = list_dir(dir, names, MAX_SET_BANKS * 2, 1);
     for (int i = 0; i < nn; i++) {
         char path[1100];
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
-        if (*n < MAX_BANKS && bank_from_folder(&out[*n], path, names[i])) {
+        if (*n < MAX_SET_BANKS && bank_from_folder(&out[*n], path, names[i])) {
             dedupe(out[*n].name, out[0].name, sizeof(Bank), *n);
             (*n)++;
             added++;

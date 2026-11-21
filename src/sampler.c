@@ -26,6 +26,7 @@ static int sync_mode;
  * CHOPPING, the main thread the rest) */
 static atomic_int state = REC_IDLE, cancel_req, stop_req;
 static int ch, bars, src;
+static atomic_int mon_src; /* the meter's source while idle */
 static double target;   /* the bar line it starts on (audio thread's) */
 static int link_wait;   /* LINK armed: frames waited for the sender's position */
 static int want, got;   /* frames: the length (0: FREE), and recorded so far */
@@ -48,6 +49,7 @@ void sampler_init(int rate, const char *d)
 
 void sampler_set_latency(int frames) { atomic_store(&lat_frames, frames < 0 ? 0 : frames); }
 void sampler_sync_mode(int on) { sync_mode = on; }
+void sampler_monitor(int s) { atomic_store(&mon_src, s); }
 
 /* ------------------------------------------------------------- audio side */
 
@@ -55,6 +57,19 @@ void sampler_audio(const float *in, const float *link, double link_pos, const in
                    double spf)
 {
     int st = atomic_load_explicit(&state, memory_order_acquire);
+    if (st != REC_RECORDING) { /* the meter, before anything is recorded: is there sound to sample? */
+        int ms = st == REC_ARMED ? src : atomic_load_explicit(&mon_src, memory_order_relaxed);
+        float pk = 0.f;
+        for (int k = 0; k < frames; k++) {
+            /* either side: sound on the left alone shows (and records, half as loud) */
+            const float *f = ms == SRC_LINK ? link : ms == SRC_IN ? in : NULL;
+            float l = f ? f[2 * k] : ms == SRC_OUT ? out[2 * k] / 32768.f : 0.f;
+            float r = f ? f[2 * k + 1] : ms == SRC_OUT ? out[2 * k + 1] / 32768.f : 0.f;
+            pk = fmaxf(pk, fmaxf(fabsf(l), fabsf(r)));
+        }
+        if (pk > atomic_load(&level))
+            atomic_store(&level, pk);
+    }
     if (st != REC_ARMED && st != REC_RECORDING)
         return;
     if (atomic_load(&cancel_req)) {
