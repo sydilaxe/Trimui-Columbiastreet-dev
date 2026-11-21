@@ -21,6 +21,9 @@
 #define SET_NAME 40
 #define CURATED_SET "DIRT"  /* the curated breaks, fetched by tools/fetch_samples.sh */
 #define LOOSE_SET "BREAKS"  /* the .wav files straight in breaks/ */
+#define SAMPLE_SET "SAMPLES" /* the sets made for sampling into: SAMPLES1, SAMPLES2 ... */
+#define SET_MARK ".sampleset" /* in a set made here: listed and loaded while still empty */
+#define EMPTY_BANK "EMPTY"  /* an empty set's silent stand-in, until the first recording takes its place */
 
 /* how a bank is cut: at its hits (onsets, on the 16th grid when its tempo is
  * known), evenly every 16th, 8th or beat; or pre-chopped (a folder: its files) */
@@ -71,6 +74,17 @@ int breaks_set_current(void);          /* the set in banks[], or -1 */
 void breaks_set_choice_file(const char *path);
 int breaks_load_set(int i);  /* at start-up, nothing playing yet: into banks[] */
 int breaks_load_chosen(void); /* the one remembered, else DIRT, else the first */
+/* a new empty set to sample into, breaks/SAMPLESn (the first n free): made, the
+ * sets scanned again; its index, or -1 (name set to it either way) */
+int breaks_new_set(char *name, int n);
+/* the set in banks[]: how many breaks of its own (not the recordings, not the
+ * stand-in), and whether a recording can go in as one more (not DIRT, not full) */
+int breaks_set_count(void);
+int breaks_set_takes_more(void);
+/* a recording added to the set in banks[]: its label (S01, S02 ... the first
+ * free) and its file in the set's folder (S01_<bars>BAR.wav in time, the tempo
+ * exact from the length; S01.wav free). 0 when the set can't take it */
+int breaks_set_add_name(char *path, int n, char *label, int bars);
 
 /* switching while the music plays: start loading set i on a thread (0 if one
  * is loading already); once the state is READY, commit swaps it into banks[]

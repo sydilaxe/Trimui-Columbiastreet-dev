@@ -109,7 +109,9 @@ jobs:
           grep -q "^sampler kept: .*(want 1: 1)" $r
           grep -q "^sampler buttons: .*(want 1: 1)" $r
           grep -q "^sampler meter: .*(want 1: 1)" $r
+          grep -q "^sampler on DIRT: 1" $r
           grep -q "^sampler, a full set: .*(want 1: 1)" $r
+          grep -q "^sampler, a new set: .*(want 1: 1)" $r
           grep -q "^song sets: .*(want 1: 1)" $r
           grep -q "^save errors: .*(want 1: 1)" $r
           grep -q "^bass voices: 24, 0 silent (want 0)" $r

@@ -575,25 +575,38 @@ static void pattern_b_released(void)
 
 /* the SET stop: X / Y pick a set of breaks (a folder in breaks/), A loads it
  * while the music plays on; ui_tick swaps it in once it is ready */
+/* the SET stop: X / Y pick a set, or + NEW SET after the last (an empty one to
+ * sample into); A loads it, or makes the new one and loads it */
 static void set_action(int b, int repeats)
 {
     int n = breaks_nsets();
-    if (!n) {
-        if (b == BTN_X || b == BTN_Y || b == BTN_A)
-            say("NO SETS: PUT A FOLDER OF WAVS IN BREAKS/");
-        return;
-    }
-    if (set_pick < 0 || set_pick >= n)
+    if (set_pick < 0 || set_pick > n)
         set_pick = breaks_set_current() >= 0 ? breaks_set_current() : 0;
     if (b == BTN_X || b == BTN_Y) {
-        set_pick = wrap(set_pick + (b == BTN_X ? 1 : -1), n);
+        set_pick = wrap(set_pick + (b == BTN_X ? 1 : -1), n + 1);
         return;
     }
     if (b != BTN_A || repeats)
         return;
-    if (breaks_switch_state() != SWITCH_IDLE)
+    if (breaks_switch_state() != SWITCH_IDLE) {
         say("STILL LOADING SET %.24s", breaks_set_name(breaks_switch_target()));
-    else if (set_pick == breaks_set_current())
+        return;
+    }
+    if (set_pick == n) {
+        char nm[SET_NAME];
+        int i = breaks_new_set(nm, sizeof nm);
+        if (i < 0) {
+            say("COULDN'T MAKE A SET IN BREAKS/");
+            return;
+        }
+        set_pick = i;
+        if (breaks_switch_start(i)) {
+            song_pending = -1;
+            say("NEW SET %.20s: SAMPLE INTO IT", nm);
+        }
+        return;
+    }
+    if (set_pick == breaks_set_current())
         say("SET %.24s IS IN", breaks_set_name(set_pick));
     else if (breaks_switch_start(set_pick)) {
         song_pending = -1;
@@ -1429,7 +1442,7 @@ static void draw_footer(void)
     else if (page == PAGE_CHOP && chop_p == CHOP_TOP + 1)
         hint = "X/Y:CUT IT AGAIN, LIVE  A:PLAY SLICE  B:MUTE";
     else if (page == PAGE_CHOP && chop_p < 0)
-        hint = "^v:PARAMS  X/Y:PICK A SET  A:LOAD IT  B:MUTE";
+        hint = "^v:PARAMS  X/Y:PICK A SET (OR + NEW)  A:LOAD IT  B:MUTE";
     if (page == PAGE_SONG && song_cur >= NSLOT)
         hint = song_cur == SG_TEMPO   ? (ts_f == 0 ? "<>:SETTING  X/Y:TEMPO  R2+X:TAP" : "<>:SETTING  X/Y:SYNC MODE")
                : song_cur == SG_OUT   ? "<>:SETTING  X/Y:+/-"
@@ -1652,8 +1665,10 @@ static void draw_chop(void)
             snprintf(info, sizeof info, "REC%d %d%%", sampler_channel() + 1, (int)(100.f * sampler_progress()));
         else if (rst == REC_CHOPPING)
             snprintf(info, sizeof info, "REC%d CUTTING...", sampler_channel() + 1);
+        else if (breaks_set_takes_more())
+            snprintf(info, sizeof info, "A: NEW BREAK IN %.10s", breaks_set_name(breaks_set_current()));
         else
-            snprintf(info, sizeof info, "A: REC INTO %s", voice_names[v]);
+            snprintf(info, sizeof info, "A: REC INTO %s (REC%d)", voice_names[v], v + 1);
         text_r(wx + ww - 8, iy, info, rst != REC_IDLE ? 0xff5050 : C_DIM, FONT_SMALL);
     }
     else if (chop_p == CHOP_TOP + 1) {
@@ -1668,19 +1683,20 @@ static void draw_chop(void)
     }
     else if (chop_p < 0) {
         /* the SET stop: the set picked, and whether it is the one in */
-        int n = breaks_nsets(), pk = set_pick >= 0 && set_pick < n ? set_pick : breaks_set_current();
-        int loading = breaks_switch_state() != SWITCH_IDLE, in = pk == breaks_set_current();
+        int n = breaks_nsets(), pk = set_pick >= 0 && set_pick <= n ? set_pick : breaks_set_current();
+        int loading = breaks_switch_state() != SWITCH_IDLE, in = pk >= 0 && pk == breaks_set_current();
+        int fresh = pk == n || pk < 0; /* + NEW SET */
         gfx_fill(wx, iy - 2, ww, 24, C_PANEL2);
         gfx_rect(wx, iy - 2, ww, 24, 2, vcol[v]);
         gfx_text(wx + 8, iy, "SET", C_TEXT, FONT_SMALL);
-        snprintf(info, sizeof info, "< %.24s >", n ? breaks_set_name(pk) : "NONE");
+        snprintf(info, sizeof info, "< %.24s >", fresh ? "+ NEW SET" : breaks_set_name(pk));
         gfx_text(wx + 50, iy, info, in ? C_TEXT : C_ACCENT, FONT_SMALL);
         if (loading)
             snprintf(info, sizeof info, "LOADING %.20s...", breaks_set_name(breaks_switch_target()));
-        else if (n)
-            snprintf(info, sizeof info, in ? "%d/%d  IN" : "%d/%d  A:LOAD", pk + 1, n);
+        else if (fresh)
+            snprintf(info, sizeof info, "A:MAKE ONE TO SAMPLE INTO");
         else
-            snprintf(info, sizeof info, "ADD FOLDERS TO BREAKS/");
+            snprintf(info, sizeof info, in ? "%d/%d  IN" : "%d/%d  A:LOAD", pk + 1, n);
         text_r(wx + ww - 8, iy, info, loading || !in ? C_ACCENT : C_DIM, FONT_SMALL);
     }
     else {

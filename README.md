@@ -118,7 +118,9 @@ one.
 Breaks come in **sets**, and one set plays at a time. Each folder in the app folder's `breaks/`
 is a set: make a folder, fill it with `.wav` loops (Apache, Think, Funky Drummer...), and it is a
 set you can pick on the CHOP page. The curated breaks are the set `DIRT`. `.wav` files dropped
-straight into `breaks/` make one more set, `BREAKS`.
+straight into `breaks/` make one more set, `BREAKS`. A set made on the SET stop (+ NEW SET) is listed
+while it is still empty (it holds a hidden `.sampleset` file), and the SAMPLE stop fills it. A loop
+named `NAME_2BAR.wav` (no tempo in its name) is taken as exactly two bars, its tempo from its length.
 
 ```
 breaks/
@@ -276,18 +278,27 @@ The pages are PATTERN, CHOP, BASS, MIX and SONG. The footer shows each page's ke
     that long at the tempo, so it plays in time with nothing stretched; stopped, or FREE, it starts
     at once (FREE stops at the next A). A while armed, or during a recording in bars, calls it off.
     A meter under the row shows the source's level all the time, so you can see there is sound
-    before recording (red: near clipping). The waveform shows it filling. Done, it is cut at its hits on the 16th grid and comes in as
-    **REC1**-**REC4** (the channel's number) while the beat plays on; the channel plays it at once
-    (on GRID, so it plays as recorded), in place of its last recording. Recordings are kept in
-    `rec/` in the app folder and come back with every set and every start, so a song finds them by
-    name. See [Sampling](#sampling).
+    before recording (red: near clipping). The waveform shows it filling. Done, it is cut at its hits
+    on the 16th grid and comes in while the beat plays on; the channel plays it at once (on GRID, so it
+    plays as recorded). Where it goes, the row says (A: NEW BREAK IN ... or A: REC INTO ...):
+    - In your own sets, and in a new one made on the SET stop, it is **one more break of the set's
+      own**, S01, S02 and on, kept in the set's folder (`S01_2BAR.wav`: two bars, its tempo exact from
+      its length), up to the set's 32 breaks. Sample a whole set of breaks this way.
+    - In DIRT (the curated set, which updates replace), or a set already full, it goes to the
+      channel's scratch slot, **REC1**-**REC4** (the channel's number), in place of its last
+      recording. These are kept in `rec/` in the app folder and come back with every set and every
+      start, so a song finds them by name.
+
+    See [Sampling](#sampling).
   - **CHOP** (under SAMPLE): how the channel's break is cut. X / Y cut it again, live, while it
     plays: at its **HITS**, or evenly every **16TH**, **8TH** or **BEAT**. A recording keeps its cut;
     a break from a set has its own again at the next start. A pre-chopped break (a folder) keeps its
     files.
   - **SET** (up from BREAK, under the waveform): the set of breaks, a folder in `breaks/` (see
     [sets](#your-own-breaks-sets)). X / Y pick a set, A loads it. The beat plays on while it
-    loads and the new set comes in when it is ready.
+    loads and the new set comes in when it is ready. After the last set, **+ NEW SET**: A makes an
+    empty set to sample into (`breaks/SAMPLES1`, `SAMPLES2`...) and loads it. Until the first
+    recording, an empty set plays one silent bar, EMPTY; the first recording takes its place.
   - **BREAK, SLICE**: the bank, and the slice to play.
   - **MODE**: FIX plays SLICE every hit. WALK steps through RANGE slices from SLICE, one per
     hit. RAND picks one of them at random. GRID plays the slice that falls on this step of the
@@ -522,7 +533,8 @@ on the leader's own bar line, to the sample, however long the sound took on the 
 The SAMPLE row shows the leader's name while its sound comes in. `CS_LINK_AUDIO=0` leaves the data channel
 off (the clock link alone, as before). Recordings are 16-bit mono WAVs in
 `rec/` (`REC1_2BAR.wav`: channel 1, two bars, its tempo exact from its length; `_16THS` and so on
-when cut again), at most 40 seconds. Delete one to forget it; copy one into a set to keep it there. `CS_ROTATE=180` turns the picture and
+when cut again), at most 40 seconds. Delete one to forget it; copy one into a set to keep it there. Recordings into a set
+(S01, S02...) are in that set's folder instead, as its own breaks. `CS_ROTATE=180` turns the picture and
 `CS_JOYMAP=A=1,B=0,...` renumbers the buttons (also `L2`, `R2`, `L3`, `R3`, `F1`, `F2`), for a firmware that
 differs. `log.txt` lists the controllers found and any button the app doesn't use.
 
